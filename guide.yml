@@ -1,0 +1,66 @@
+name: Build the Red Carpet guide
+
+on:
+  schedule:
+    - cron: '23 */8 * * *'      # three times a day
+  workflow_dispatch:            # lets you press "Run workflow" yourself
+
+permissions:
+  contents: write               # only used to keep the schedule alive (see the last step of "build")
+  pages: write
+  id-token: write
+
+concurrency:
+  group: red-carpet-guide
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Get the open guide grabber (iptv-org/epg)
+        run: |
+          git clone --depth 1 -b master https://github.com/iptv-org/epg.git epg
+          cd epg && npm install
+
+      - name: Fetch the last published guide (so a site that fails keeps its last good data)
+        run: python3 scripts/build_guide.py fetch-prev --base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}" --dir prev
+
+      - name: Build the guide
+        run: python3 scripts/build_guide.py build --epg epg --out public --work work --prev prev
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Keep the schedule alive
+        # GitHub switches scheduled runs off after 60 days with no activity in the repository
+        run: |
+          last=$(git log -1 --format=%ct); now=$(date +%s)
+          if [ $((now - last)) -gt 3888000 ]; then
+            git config user.name "guide-bot"; git config user.email "guide-bot@users.noreply.github.com"
+            git commit --allow-empty -m "Keep the schedule alive"; git push
+          fi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

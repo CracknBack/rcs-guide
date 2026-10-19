@@ -1,0 +1,26 @@
+{
+  "_about": "Sites the Red Carpet guide is built from. Each is a grabber in the open iptv-org/epg project. A site that is missing there, or that fails on a given run, is skipped and reported on the status page; it never breaks the others.",
+  "days": 8,
+  "max_connections": 4,
+  "site_timeout_minutes": 50,
+  "max_channels_per_site": 180,
+  "keep_previous_if_below": 0.4,
+  "sports_regex": "\\b(sports?|sportsnet|espn|bein|tnt|supersport|super sport|eurosport|dazn|stan|kayo|optus|fox (sports|footy|league|cricket)|sky sport|sporttv|sport tv|premier sports|setanta|arena|viaplay|canal\\+? ?(foot|sport)|movistar (deportes|liga)|laliga|la liga|bundesliga|serie a|ligue ?1|champions|premier league|cbs sports|golazo|tudn|universo|telemundo|peacock|usa network|nbcsn|mls|football|soccer|cricket|rugby|racing|f1|formula|motorsport)\\b",
+  "always_regex": "^(bbc (one|two)|itv ?[1-4]?|channel [45]|s4c|nine|network 10|seven|sbs( viceland)?|abc|rte ?(one|two|2)?|virgin media (one|two)|tg4)\\b",
+  "sport_programme_regex": "(football|soccer|match of the day|premier league|champions league|europa league|conference league|la ?liga|bundesliga|serie a|ligue ?1|fa cup|efl|carabao|world cup|nations league|formula ?(1|one)|grand prix|\\bf1\\b|\\bv(s|ersus)?\\.? |\\blive\\b.*\\b(match|game)\\b)",
+  "sites": [
+    {"site": "sky.com",           "label": "Sky UK (Sky Sports, TNT Sports)"},
+    {"site": "foxtel.com.au",     "label": "Foxtel (Australia)"},
+    {"site": "foxsports.com.au",  "label": "Fox Sports Australia"},
+    {"site": "dstv.com",          "label": "DStv (SuperSport)"},
+    {"site": "sky.co.nz",         "label": "Sky NZ"},
+    {"site": "guidatv.sky.it",    "label": "Sky Italia"},
+    {"site": "bein.com",          "label": "beIN Sports"},
+    {"site": "beinsports.com",    "label": "beIN Sports (second source)"},
+    {"site": "tvtv.us",           "label": "United States"},
+    {"site": "movistarplus.es",   "label": "Movistar+ (Spain)"},
+    {"site": "sky.de",            "label": "Sky Germany"},
+    {"site": "tvpassport.com",    "label": "TV Passport"},
+    {"site": "tv24.co.uk",        "label": "TV24 (UK)"}
+  ]
+}
