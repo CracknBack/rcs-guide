@@ -16,7 +16,7 @@ Design rules
 Environment
   GRAB_CMD   how to run the grabber. Default tries "npm run grab ---" and then "npm run grab --".
 """
-import argparse, glob, gzip, html, json, os, re, shlex, subprocess, sys, time, urllib.request
+import argparse, glob, gzip, html, json, os, re, shlex, shutil, subprocess, sys, time, urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -280,6 +280,9 @@ def cmd_build(args):
     (out / 'status.json').write_text(json.dumps(status, indent=1), encoding='utf-8')
     write_page(out / 'index.html', status)
     (out / '.nojekyll').write_text('')
+    for extra in ('type.html',):                       # pages the app links to (the phone typing page)
+        if (ROOT / extra).exists():
+            shutil.copy(ROOT / extra, out / extra)
     log('Merged guide: %d channels, %d programmes, reaches %s' % (c, n, iso(hz)))
     return 0
 

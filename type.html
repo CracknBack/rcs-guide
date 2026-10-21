@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Type on your TV</title>
+<style>
+:root{color-scheme:light dark;--bg:#fbf6ee;--fg:#2a1a14;--mut:#7a6558;--line:#d9c7ad;--btn:#8E1522;--ok:#1f7a3d;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#120a0d;--fg:#f4e6d6;--mut:#b39a86;--line:#3a2226;--btn:#c0283a;--ok:#5fd08a;--bad:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.45 system-ui,sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:1.2rem}
+main{width:100%;max-width:30rem}h1{font-size:1.5rem;margin:.4rem 0 .2rem}p{color:var(--mut);margin:.3rem 0 1rem}
+input{width:100%;font:inherit;font-size:1.25rem;padding:.9rem 1rem;border:2px solid var(--line);border-radius:.8rem;background:transparent;color:var(--fg)}
+input:focus{outline:none;border-color:var(--btn)}
+button{width:100%;margin-top:.9rem;font:inherit;font-weight:700;font-size:1.2rem;padding:.95rem;border:0;border-radius:.8rem;background:var(--btn);color:#fff}
+button:disabled{opacity:.5}#st{min-height:1.6rem;margin-top:.9rem;font-weight:600}.ok{color:var(--ok)}.bad{color:var(--bad)}
+small{display:block;margin-top:1.4rem;color:var(--mut);font-size:.85rem}
+</style></head><body><main>
+<h1>Type on your TV</h1>
+<p id="for">Open this page by scanning the code on your TV.</p>
+<input id="t" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="Type here" disabled>
+<button id="go" disabled>Send to TV</button>
+<div id="st"></div>
+<small>What you type is locked on this phone with a key that only your TV's code contains, so the relay that carries it can't read it.</small>
+</main>
+<script>
+const RELAY = 'https://ntfy.sh/';
+const h = new URLSearchParams(location.hash.slice(1)), topic = h.get('t'), keyText = h.get('k'), label = h.get('f') || 'Text';
+const $ = id => document.getElementById(id);
+const b64u = u => btoa(String.fromCharCode.apply(null, Array.from(u))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function send() {
+  const text = $('t').value;
+  if (!text) { $('st').className = 'bad'; $('st').textContent = 'Type something first.'; return; }
+  $('go').disabled = true; $('st').className = ''; $('st').textContent = 'Sending…';
+  try {
+    const key = await crypto.subtle.importKey('raw', unb64u(keyText), 'AES-GCM', false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name: 'AES-GCM', iv}, key, new TextEncoder().encode(text)));
+    const msg = new Uint8Array(iv.length + ct.length); msg.set(iv); msg.set(ct, iv.length);
+    const r = await fetch(RELAY + topic, {method: 'POST', body: b64u(msg)});
+    if (!r.ok) throw new Error('the typing service said ' + r.status);
+    $('st').className = 'ok'; $('st').textContent = 'Sent. Look at your TV.';
+  } catch (e) { $('st').className = 'bad'; $('st').textContent = 'Couldn’t send: ' + e.message; }
+  $('go').disabled = false;
+}
+if (topic && keyText && window.crypto && crypto.subtle) {
+  $('for').textContent = 'Typing into: ' + label;
+  $('t').disabled = false; $('go').disabled = false; $('t').focus();
+  $('go').onclick = send;
+  $('t').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+} else if (!(window.crypto && crypto.subtle)) { $('for').textContent = 'This browser can’t do secure typing. Try Chrome or Safari.'; }
+</script></body></html>
