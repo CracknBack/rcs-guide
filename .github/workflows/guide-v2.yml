@@ -13,7 +13,12 @@ name: Build guide-v2 (resolved events)
 
 on:
   schedule:
-    - cron: '*/15 * * * *'       # every 15 minutes; tighten only after confirming GitHub actually keeps up
+    # SAFETY STOPGAP (2026-10-26): the owner's TheSportsDB plan is ~100 calls/hour. Even Premier-League-
+    # only at every 15 minutes was already ~148 calls/hour, over budget, with no per-day caching to bring
+    # it down. Slowed to every 30 minutes as an immediate fix while resolve_v2.py gets a proper tiered
+    # cache (refresh today/tomorrow often, far-ahead days rarely) -- see that file's own comments once
+    # it's updated. Do not tighten this again without re-doing the call-count math against the real quota.
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
