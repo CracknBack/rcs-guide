@@ -52,6 +52,65 @@ LEAGUES = [
      'countries': [('US', 'United_States')]},
     {'comp': 'NFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4391', 'tsdb_sport': 'American Football',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+
+    # European football: football-data.org's free plan covers these 6 (confirmed via this key's own
+    # /v4/competitions listing on 2026-10-26) -- same source as Premier League, more detailed status
+    # than TheSportsDB's generic strStatus. The rest aren't on that plan, so fixtures come from
+    # TheSportsDB itself instead, same as NBA/NHL/MLB/NFL above.
+    {'comp': 'La Liga', 'fixtures': 'football-data', 'fd_comp': 'PD', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'Bundesliga', 'fixtures': 'football-data', 'fd_comp': 'BL1', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('DE', 'Germany'), ('AU', 'Australia')]},
+    {'comp': 'Ligue 1', 'fixtures': 'football-data', 'fd_comp': 'FL1', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('FR', 'France'), ('AU', 'Australia')]},
+    {'comp': 'Serie A', 'fixtures': 'football-data', 'fd_comp': 'SA', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('IT', 'Italy'), ('AU', 'Australia')]},
+    {'comp': 'Eredivisie', 'fixtures': 'football-data', 'fd_comp': 'DED', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('NL', 'Netherlands')]},
+    {'comp': 'Primeira Liga', 'fixtures': 'football-data', 'fd_comp': 'PPL', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('PT', 'Portugal')]},
+    {'comp': 'Belgian Pro League', 'fixtures': 'tsdb', 'tsdb_league_id': '4338', 'tsdb_sport': 'Soccer',
+     'countries': [('BE', 'Belgium'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Scottish Premiership', 'fixtures': 'tsdb', 'tsdb_league_id': '4330', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom')]},
+    {'comp': 'League of Ireland', 'fixtures': 'tsdb', 'tsdb_league_id': '4643', 'tsdb_sport': 'Soccer',
+     'countries': [('IE', 'Ireland'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Austrian Bundesliga', 'fixtures': 'tsdb', 'tsdb_league_id': '4621', 'tsdb_sport': 'Soccer',
+     'countries': [('AT', 'Austria'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Greek Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4336', 'tsdb_sport': 'Soccer',
+     'countries': [('GR', 'Greece'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Turkish Super Lig', 'fixtures': 'tsdb', 'tsdb_league_id': '4339', 'tsdb_sport': 'Soccer',
+     'countries': [('TR', 'Turkey'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Swiss Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4675', 'tsdb_sport': 'Soccer',
+     'countries': [('CH', 'Switzerland'), ('UK', 'United_Kingdom')]},
+
+    # Motorsport. No World Superbike (WSBK) entry exists in TheSportsDB's catalog (checked by hand,
+    # 2026-10-26) -- only domestic "British Superbike Championship", a different, smaller series, so
+    # it's deliberately left out rather than silently substituted for what was actually asked for.
+    {'comp': 'Formula 1', 'fixtures': 'tsdb', 'tsdb_league_id': '4370', 'tsdb_sport': 'Motorsport',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'MotoGP', 'fixtures': 'tsdb', 'tsdb_league_id': '4407', 'tsdb_sport': 'Motorsport',
+     'countries': [('UK', 'United_Kingdom'), ('AU', 'Australia')]},
+    {'comp': 'IndyCar', 'fixtures': 'tsdb', 'tsdb_league_id': '4373', 'tsdb_sport': 'Motorsport',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+    {'comp': 'NASCAR', 'fixtures': 'tsdb', 'tsdb_league_id': '4393', 'tsdb_sport': 'Motorsport',
+     'countries': [('US', 'United_States')]},
+
+    # Tennis, Golf, Fighting: individual/card sports -- TheSportsDB gives no strHomeTeam/strAwayTeam for
+    # these (confirmed by hand), everything is in strEvent instead ("Alcaraz vs Lehecka", "UFC Fight
+    # Night 292 Moicano vs Nolan"). fetch_tsdb_fixtures already handles that (see its own comment).
+    {'comp': 'ATP Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4464', 'tsdb_sport': 'Tennis',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'WTA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4517', 'tsdb_sport': 'Tennis',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'PGA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4425', 'tsdb_sport': 'Golf',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+    {'comp': 'European Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4426', 'tsdb_sport': 'Golf',
+     'countries': [('UK', 'United_Kingdom')]},
+    {'comp': 'UFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4443', 'tsdb_sport': 'Fighting',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
+    {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
 ]
 
 
@@ -89,6 +148,7 @@ def fetch_football_data_fixtures(league):
             continue
         out.append({'id': 'fd:%s:%s' % (league['fd_comp'], m['id']), 'comp': league['comp'], 'tsdb_id': None,
                     'home': m['homeTeam']['name'], 'away': m['awayTeam']['name'],
+                    'label': m['homeTeam']['name'] + ' v ' + m['awayTeam']['name'],
                     'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status']})
     return out
 
@@ -123,11 +183,17 @@ def fetch_tsdb_fixtures(league, cache):
             ts = parse_ts(e.get('strTimestamp'), e.get('dateEvent'), e.get('strTime'))
             if ts is None or abs(ts - now.timestamp()) > DAYS_AHEAD * 864e2:
                 continue
+            # Team sports (NBA, NHL...) populate strHomeTeam/strAwayTeam; individual/card sports (Golf,
+            # Tennis, UFC, Boxing -- confirmed by hand) leave both None and put everything into strEvent
+            # instead ("Japan Open ... Alcaraz vs Lehecka", "UFC Fight Night 292 Moicano vs Nolan").
+            # Matching for every TSDB-sourced fixture goes through idEvent anyway (see resolve_league),
+            # which doesn't need home/away at all -- only the cross-provider fallback (football-data
+            # fixtures against TheSportsDB listings) does, and that path never reaches these leagues.
             home, away = e.get('strHomeTeam'), e.get('strAwayTeam')
-            if not home or not away:
+            if not e.get('idEvent') or not (home or away or e.get('strEvent')):
                 continue
             out.append({'id': 'tsdb:%s' % e.get('idEvent'), 'comp': league['comp'], 'tsdb_id': e.get('idEvent'),
-                        'home': home, 'away': away,
+                        'home': home, 'away': away, 'label': e.get('strEvent') or ((home or '') + ' vs ' + (away or '')),
                         'kick': datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(), 'kick_ts': ts,
                         'status': e.get('strStatus') or 'NS'})
     # the next/past endpoints can both return an event close to "now"; de-dupe by TheSportsDB's own id
@@ -170,9 +236,13 @@ def teams_match(ev_home, ev_away, listing_title):
 # refreshing often. NEAR_MAX_AGE/FAR_MAX_AGE control that, and the cache is carried forward between runs
 # the same way guide-v2.json itself is (see mirror_published) -- a GitHub Actions run has no disk of its
 # own to remember anything in otherwise.
-NEAR_MAX_AGE = 25 * 60         # today/tomorrow: refetch roughly every run (schedule is every 30 min)
-FAR_MAX_AGE = 36 * 3600        # everything else: the owner's call (2026-10-26) -- a listing 5-10 days out
-                                # barely changes hour to hour, so once every day and a half is enough
+NEAR_MAX_AGE = 25 * 60         # today/tomorrow: refetch roughly every run (schedule is every 30 min) --
+                                # kept responsive deliberately: a channel confirmed an hour before kickoff
+                                # should actually show up before kickoff, not on the next slow tick.
+FAR_MAX_AGE = 24 * 3600         # everything else: once a day (2026-10-26, after confirming the real
+                                # TheSportsDB quota is 100/minute, not /hour -- there was no longer a
+                                # quota reason to keep this as tight as the original 6h; a listing 5-10
+                                # days out barely changes hour to hour anyway).
 
 
 def fetch_tsdb_tv_day(day, country_param, sport, cache, cache_key, day_offset):

@@ -33,7 +33,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20   # the full 28-league config took ~8 min locally on a cold cache; later runs with a warm cache should be much faster, but the first deploy of a new config needs the margin
     steps:
       - uses: actions/checkout@v4
 
