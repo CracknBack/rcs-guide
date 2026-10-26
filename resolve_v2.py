@@ -5,20 +5,29 @@ never has to fetch or merge anything itself for this -- see Plan-New-Guide.md se
 (the TV-side merge of a dozen-plus scraped guides was the actual source of the "multiple
 interpretations" bugs, and is heavy enough to have OOM-crashed a Fire TV Stick before).
 
-Scope for this first slice (deliberately small, per the plan's phased approach): Premier League only,
-UK/US/Australia. Two sources:
-  - football-data.org: the fixtures themselves (kickoff, status) -- ground truth, not a TV guide.
-  - TheSportsDB (paid tier, eventstv.php): which channel/country is showing each match, by day.
-    Confirmed by hand (see the session that built this) to return real, specific channel names and
-    times across every country tried, not just the 5 the app's own TSDB_COUNTRIES list used to assume.
-    It does NOT say LIVE vs REPLAY/HIGHLIGHTS -- there is no such field anywhere in its schema -- so
-    that is inferred here, once, from listing-time-vs-kickoff, and always marked inferred. This keeps
-    the "same raw fact interpreted five different ways in five different functions" bug (see the plan)
-    from recurring on the server side.
+Leagues covered: see LEAGUES below. Two ways a league gets its fixtures (ground truth: who's playing,
+when, status):
+  - 'football-data': football-data.org. Used for Premier League specifically because it was already
+    the app's existing fixtures source and gives a finer-grained live status than TheSportsDB's events
+    endpoint does.
+  - 'tsdb': TheSportsDB's own eventsnextleague.php/eventspastleague.php. Used for everything else
+    (NBA, NHL, MLB, NFL) -- confirmed by hand that these return real fixtures with real timestamps,
+    the same quality as the football ones.
 
-Every event here is "likely", never "confirmed": this is one source, and Plan principle 2 reserves
-"confirmed" for two independent sources agreeing, or the channel's own live guide agreeing at the
-moment it's actually watched -- that second check only the app itself can do (L7), against the
+Every league then gets its TV listings from TheSportsDB's eventstv.php, by country and day. It does
+NOT say LIVE vs REPLAY/HIGHLIGHTS -- there is no such field anywhere in its schema -- so that is
+inferred here, once, from listing-time-vs-kickoff, and always marked inferred.
+
+Matching a TV listing to a fixture:
+  - When the fixture ITSELF came from TheSportsDB ('tsdb' leagues): match by idEvent, exact. Confirmed
+    by hand that eventstv.php's idEvent is the same id eventsnextleague.php uses for the same event --
+    an exact join, not a guess, wherever TheSportsDB has both sides.
+  - When the fixture came from football-data.org (no TheSportsDB id to join on): match by team name,
+    same approach as before, because the two sources don't share an id space.
+
+Every event here is "likely", never "confirmed": this is one source per claim, and Plan principle 2
+reserves "confirmed" for two independent sources agreeing, or the channel's own live guide agreeing at
+the moment it's actually watched -- that second check only the app itself can do (L7), against the
 provider's own guide, which never leaves the device. This file is an input to that check, not a
 replacement for it.
 """
@@ -27,9 +36,23 @@ from datetime import datetime, timedelta, timezone
 
 FD_KEY = os.environ.get('FD_KEY', '').strip()
 TSDB_KEY = os.environ.get('TSDB_KEY', '').strip()
-COUNTRIES = [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]
 DAYS_AHEAD = 10
 UA = {'User-Agent': 'red-carpet-streams-guide-v2/1'}
+
+# comp must match the TV app's COMPS display name exactly, so the app can line up events with the
+# competition tab a user picked. countries: (short code the app understands, TheSportsDB's "a=" param).
+LEAGUES = [
+    {'comp': 'Premier League', 'fixtures': 'football-data', 'fd_comp': 'PL', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
+    {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
+     'countries': [('US', 'United_States'), ('CA', 'Canada')]},
+    {'comp': 'MLB', 'fixtures': 'tsdb', 'tsdb_league_id': '4424', 'tsdb_sport': 'Baseball',
+     'countries': [('US', 'United_States')]},
+    {'comp': 'NFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4391', 'tsdb_sport': 'American Football',
+     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+]
 
 
 def fetch_json(url, headers=None):
@@ -38,30 +61,82 @@ def fetch_json(url, headers=None):
         return json.loads(r.read().decode('utf-8'))
 
 
-def fetch_fixtures():
+def parse_ts(raw_ts, raw_date='', raw_time=''):
+    s = raw_ts or ((raw_date or '') + ' ' + (raw_time or '00:00:00'))
+    for fmt in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def fetch_football_data_fixtures(league):
     if not FD_KEY:
-        print('No FD_KEY set -- skipping fixtures (nothing to resolve).', file=sys.stderr)
+        print('No FD_KEY set -- skipping %s fixtures.' % league['comp'], file=sys.stderr)
         return []
-    url = 'https://api.football-data.org/v4/competitions/PL/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED'
+    url = 'https://api.football-data.org/v4/competitions/%s/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED' % league['fd_comp']
     try:
         j = fetch_json(url, {'X-Auth-Token': FD_KEY})
     except Exception as e:
-        print('Fixtures fetch failed:', e, file=sys.stderr)
+        print('Fixtures fetch failed for %s: %s' % (league['comp'], e), file=sys.stderr)
         return []
-    now = datetime.now(timezone.utc)
-    horizon = now + timedelta(days=DAYS_AHEAD)
+    horizon = datetime.now(timezone.utc) + timedelta(days=DAYS_AHEAD)
     out = []
     for m in j.get('matches', []):
         kick = datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00'))
         if kick > horizon:
             continue
-        out.append({
-            'id': 'fd:PL:%s' % m['id'],
-            'comp': 'Premier League',
-            'home': m['homeTeam']['name'], 'away': m['awayTeam']['name'],
-            'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status'],
-        })
+        out.append({'id': 'fd:%s:%s' % (league['fd_comp'], m['id']), 'comp': league['comp'], 'tsdb_id': None,
+                    'home': m['homeTeam']['name'], 'away': m['awayTeam']['name'],
+                    'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status']})
     return out
+
+
+FIXTURES_MAX_AGE = 3 * 3600   # schedules/results don't change minute to minute either -- same reasoning as the TV-listing cache
+
+
+def fetch_tsdb_fixtures(league, cache):
+    if not TSDB_KEY:
+        print('No TSDB_KEY set -- skipping %s fixtures.' % league['comp'], file=sys.stderr)
+        return []
+    out = []
+    now = datetime.now(timezone.utc)
+    for endpoint in ('eventsnextleague', 'eventspastleague'):
+        cache_key = 'fixtures|%s|%s' % (league['comp'], endpoint)
+        entry = cache.get(cache_key)
+        if entry and time.time() - entry.get('fetched_at', 0) < FIXTURES_MAX_AGE:
+            events = entry.get('events') or []
+        else:
+            url = 'https://www.thesportsdb.com/api/v1/json/%s/%s.php?id=%s' % (
+                urllib.parse.quote(TSDB_KEY), endpoint, league['tsdb_league_id'])
+            try:
+                j = fetch_json(url)
+                time.sleep(0.3)
+            except Exception as e:
+                print('%s fetch failed for %s: %s' % (endpoint, league['comp'], e), file=sys.stderr)
+                events = entry.get('events') if entry else []
+            else:
+                events = j.get('events') or []
+                cache[cache_key] = {'fetched_at': time.time(), 'events': events}
+        for e in events:
+            ts = parse_ts(e.get('strTimestamp'), e.get('dateEvent'), e.get('strTime'))
+            if ts is None or abs(ts - now.timestamp()) > DAYS_AHEAD * 864e2:
+                continue
+            home, away = e.get('strHomeTeam'), e.get('strAwayTeam')
+            if not home or not away:
+                continue
+            out.append({'id': 'tsdb:%s' % e.get('idEvent'), 'comp': league['comp'], 'tsdb_id': e.get('idEvent'),
+                        'home': home, 'away': away,
+                        'kick': datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(), 'kick_ts': ts,
+                        'status': e.get('strStatus') or 'NS'})
+    # the next/past endpoints can both return an event close to "now"; de-dupe by TheSportsDB's own id
+    seen, dedup = set(), []
+    for f in out:
+        if f['tsdb_id'] in seen:
+            continue
+        seen.add(f['tsdb_id']); dedup.append(f)
+    return dedup
 
 
 def norm_team(name):
@@ -88,26 +163,66 @@ def teams_match(ev_home, ev_away, listing_title):
 # same as everything else -- never a static rule based on a channel's usual name.
 
 
-def fetch_tsdb_day(day, country_param):
+# Tiered cache: the owner's TheSportsDB plan is ~100 calls/hour. Fetching every (league, country, day)
+# combination on every run -- the original design -- was already ~148 calls/hour for Premier League
+# ALONE at a 15-minute schedule, before any of the other leagues below existed. A day far in the future
+# essentially never changes between one run and the next; only "today" and "tomorrow" are worth
+# refreshing often. NEAR_MAX_AGE/FAR_MAX_AGE control that, and the cache is carried forward between runs
+# the same way guide-v2.json itself is (see mirror_published) -- a GitHub Actions run has no disk of its
+# own to remember anything in otherwise.
+NEAR_MAX_AGE = 25 * 60         # today/tomorrow: refetch roughly every run (schedule is every 30 min)
+FAR_MAX_AGE = 36 * 3600        # everything else: the owner's call (2026-10-26) -- a listing 5-10 days out
+                                # barely changes hour to hour, so once every day and a half is enough
+
+
+def fetch_tsdb_tv_day(day, country_param, sport, cache, cache_key, day_offset):
     if not TSDB_KEY:
         return []
+    now = time.time()
+    max_age = NEAR_MAX_AGE if day_offset in (0, 1) else FAR_MAX_AGE
+    entry = cache.get(cache_key)
+    if entry and now - entry.get('fetched_at', 0) < max_age:
+        return entry.get('listings') or []   # cache hit -- no API call, no need to be polite about rate either
     url = 'https://www.thesportsdb.com/api/v1/json/%s/eventstv.php?%s' % (
-        urllib.parse.quote(TSDB_KEY), urllib.parse.urlencode({'d': day, 'a': country_param, 's': 'Soccer'}))
-    for attempt in range(3):
-        try:
-            j = fetch_json(url)
-            return j.get('tvevents') or []
-        except Exception as e:
-            if attempt == 2:
-                print('TheSportsDB fetch failed for %s %s: %s' % (country_param, day, e), file=sys.stderr)
-                return []
-            time.sleep(2)
+        urllib.parse.quote(TSDB_KEY), urllib.parse.urlencode({'d': day, 'a': country_param, 's': sport}))
+    try:
+        for attempt in range(3):
+            try:
+                j = fetch_json(url)
+                listings = j.get('tvevents') or []
+                cache[cache_key] = {'fetched_at': now, 'listings': listings}
+                return listings
+            except Exception as e:
+                if attempt == 2:
+                    print('TheSportsDB TV fetch failed for %s/%s %s: %s' % (sport, country_param, day, e), file=sys.stderr)
+                    # an expired-but-present cache entry beats nothing at all if today's fetch fails
+                    return entry.get('listings') if entry else []
+                time.sleep(2)
+    finally:
+        time.sleep(0.3)   # only after a real API call, not a cache hit -- be polite, even though the premium tier showed no 429s in testing
+
+
+def load_cache(path):
+    try:
+        with open(path, encoding='utf-8') as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def save_cache(path, cache):
+    # unbounded growth guard: a day that's now in the past never gets looked up again, so drop entries
+    # older than a day past their own cache time rather than letting this file grow forever.
+    cutoff = time.time() - 2 * 864e2
+    pruned = {k: v for k, v in cache.items() if v.get('fetched_at', 0) > cutoff}
+    with open(path, 'w', encoding='utf-8') as fh:
+        json.dump(pruned, fh)
 
 
 def classify_kind(listing_ts, kick_ts):
     """Inferred, never a fact from the source itself -- see module docstring. Mirrors the TV app's own
-    fixtureEvents() time windows so the two don't silently disagree (one of the plan's four principles:
-    the label is a guess about the data, say so, and make the guess the same guess everywhere)."""
+    fixtureEvents() time windows so the two don't silently disagree (one of the plan's principles: the
+    label is a guess about the data, say so, and make the guess the same guess everywhere)."""
     delta = listing_ts - kick_ts
     if -3 * 3600 <= delta <= 3600:
         return 'LIVE'
@@ -116,47 +231,59 @@ def classify_kind(listing_ts, kick_ts):
     return 'PREVIEW'
 
 
-def resolve():
-    fixtures = fetch_fixtures()
+def resolve_league(league, cache):
+    fixtures = fetch_football_data_fixtures(league) if league['fixtures'] == 'football-data' else fetch_tsdb_fixtures(league, cache)
     if not fixtures:
-        return {'generated': datetime.now(timezone.utc).isoformat(), 'competitions': ['Premier League'],
-                'countries': [c for c, _ in COUNTRIES], 'events': [], 'note': 'No fixtures resolved this run (see stderr).'}
+        return []
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    today = datetime.now(timezone.utc).date()
+    for f in fixtures:
+        f['channels'] = []
+    by_tsdb_id = {f['tsdb_id']: f for f in fixtures if f['tsdb_id']}
 
     days = sorted({datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc).strftime('%Y-%m-%d') for f in fixtures}
                   | {(datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc) + timedelta(days=d)).strftime('%Y-%m-%d')
                      for f in fixtures for d in (-1, 0, 1)})
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    for f in fixtures:
-        f['channels'] = []
-
-    for cc, param in COUNTRIES:
+    for cc, param in league['countries']:
         for day in days:
-            for t in fetch_tsdb_day(day, param):
-                ev_name = t.get('strEvent') or ''
-                ts_raw = t.get('strTimeStamp') or (t.get('dateEvent', '') + ' ' + (t.get('strTime') or '00:00:00'))
-                try:
-                    listing_ts = datetime.strptime(ts_raw, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp()
-                except ValueError:
+            day_offset = (datetime.strptime(day, '%Y-%m-%d').date() - today).days
+            cache_key = '%s|%s|%s' % (league['comp'], cc, day)
+            for t in fetch_tsdb_tv_day(day, param, league['tsdb_sport'], cache, cache_key, day_offset):
+                listing_ts = parse_ts(t.get('strTimeStamp'), t.get('dateEvent'), t.get('strTime'))
+                if listing_ts is None:
                     continue
-                for f in fixtures:
-                    if abs(listing_ts - f['kick_ts']) > 20 * 3600:
-                        continue
-                    if not teams_match(f['home'], f['away'], ev_name):
-                        continue
+                matched = []
+                tid = t.get('idEvent')
+                if tid and tid in by_tsdb_id:
+                    matched = [by_tsdb_id[tid]]
+                else:
+                    ev_name = t.get('strEvent') or ''
+                    matched = [f for f in fixtures if abs(listing_ts - f['kick_ts']) <= 20 * 3600
+                               and teams_match(f['home'], f['away'], ev_name)]
+                for f in matched:
                     f['channels'].append({
                         'channel': t.get('strChannel') or '', 'country': cc,
                         'kind': classify_kind(listing_ts, f['kick_ts']), 'inferred_kind': True,
                         'start': datetime.fromtimestamp(listing_ts, tz=timezone.utc).isoformat(),
                         'confidence': 'likely', 'source': 'thesportsdb', 'checked': now_iso,
                     })
-            time.sleep(0.3)   # be polite even though the premium tier showed no 429s in testing
 
     for f in fixtures:
         del f['kick_ts']
+        f.pop('tsdb_id', None)
+    return fixtures
 
-    return {'generated': now_iso, 'competitions': ['Premier League'], 'countries': [c for c, _ in COUNTRIES],
-            'events': fixtures}
+
+def resolve(cache):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    events = []
+    for league in LEAGUES:
+        got = resolve_league(league, cache)
+        print('%s: %d fixtures resolved' % (league['comp'], len(got)), file=sys.stderr)
+        events.extend(got)
+    return {'generated': now_iso, 'competitions': [l['comp'] for l in LEAGUES], 'events': events}
 
 
 # guide-v2 runs on its own, fast, frequent schedule (unlike the ~20min XMLTV build), and
@@ -182,7 +309,7 @@ def mirror_published(base, dest):
     if not get(base + '/status.json', os.path.join(dest, 'status.json')):
         print('No currently-published guide found -- first run, or the main guide.yml job has not run yet.', file=sys.stderr)
         return
-    for name in ('index.html', 'type.html', 'sports.xml.gz', '.nojekyll'):
+    for name in ('index.html', 'type.html', 'sports.xml.gz', '.nojekyll', 'tsdb-cache.json'):
         get('%s/%s' % (base, name), os.path.join(dest, name))
     try:
         with open(os.path.join(dest, 'status.json'), encoding='utf-8') as fh:
@@ -208,7 +335,11 @@ if __name__ == '__main__':
     if args.mirror_base:
         mirror_published(args.mirror_base, args.out)
 
-    data = resolve()
+    cache_path = os.path.join(args.out, 'tsdb-cache.json')
+    cache = load_cache(cache_path)
+    data = resolve(cache)
+    save_cache(cache_path, cache)
+
     out_path = os.path.join(args.out, 'guide-v2.json')
     with open(out_path, 'w', encoding='utf-8') as fh:
         json.dump(data, fh, indent=1, ensure_ascii=False)
