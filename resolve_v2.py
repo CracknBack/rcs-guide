@@ -31,7 +31,7 @@ the moment it's actually watched -- that second check only the app itself can do
 provider's own guide, which never leaves the device. This file is an input to that check, not a
 replacement for it.
 """
-import json, os, sys, time, urllib.request, urllib.parse
+import json, os, sys, time, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timedelta, timezone
 
 FD_KEY = os.environ.get('FD_KEY', '').strip()
@@ -120,6 +120,45 @@ def fetch_json(url, headers=None):
         return json.loads(r.read().decode('utf-8'))
 
 
+# TheSportsDB's actual plan limit is 100 requests/MINUTE (confirmed from the owner's own pricing page,
+# 2026-10-26). A fixed 0.3s gap between calls -- the original design -- allows up to ~200/min, 2x over,
+# which is exactly what happened on the first real 28-league run: real 429s starting a few minutes in,
+# cascading into every motorsport/tennis/golf/fighting league getting 0 events because the only retry
+# logic that existed (in fetch_tsdb_tv_day) slept 2s and gave up, nowhere near enough for a per-minute
+# window to clear, and fetch_tsdb_fixtures had no retry at all. This replaces both: a real sliding-
+# window limiter (never more than TSDB_RATE_LIMIT calls in any trailing 60s, with margin under the real
+# 100), plus a 429-aware retry that actually waits out the window instead of guessing at a fixed delay.
+TSDB_RATE_LIMIT = 85   # margin under the real 100/min -- this run's own 429s are the evidence the margin needs to be real, not just a round number
+_tsdb_call_times = []
+
+
+def tsdb_rate_limit_wait():
+    now = time.time()
+    while _tsdb_call_times and now - _tsdb_call_times[0] > 60:
+        _tsdb_call_times.pop(0)
+    if len(_tsdb_call_times) >= TSDB_RATE_LIMIT:
+        wait = 60 - (now - _tsdb_call_times[0]) + 0.5
+        if wait > 0:
+            print('Pacing for the TheSportsDB rate limit: waiting %.1fs' % wait, file=sys.stderr)
+            time.sleep(wait)
+    _tsdb_call_times.append(time.time())
+
+
+def fetch_tsdb_json(url, max_retries=4):
+    for attempt in range(max_retries):
+        tsdb_rate_limit_wait()
+        try:
+            return fetch_json(url)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries - 1:
+                retry_after = e.headers.get('Retry-After') if e.headers else None
+                wait = float(retry_after) if retry_after and retry_after.isdigit() else 65
+                print('429 from TheSportsDB -- waiting %.0fs before retrying (attempt %d/%d)' % (wait, attempt + 1, max_retries), file=sys.stderr)
+                time.sleep(wait)
+                continue
+            raise
+
+
 def parse_ts(raw_ts, raw_date='', raw_time=''):
     s = raw_ts or ((raw_date or '') + ' ' + (raw_time or '00:00:00'))
     for fmt in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'):
@@ -171,8 +210,7 @@ def fetch_tsdb_fixtures(league, cache):
             url = 'https://www.thesportsdb.com/api/v1/json/%s/%s.php?id=%s' % (
                 urllib.parse.quote(TSDB_KEY), endpoint, league['tsdb_league_id'])
             try:
-                j = fetch_json(url)
-                time.sleep(0.3)
+                j = fetch_tsdb_json(url)
             except Exception as e:
                 print('%s fetch failed for %s: %s' % (endpoint, league['comp'], e), file=sys.stderr)
                 events = entry.get('events') if entry else []
@@ -256,20 +294,14 @@ def fetch_tsdb_tv_day(day, country_param, sport, cache, cache_key, day_offset):
     url = 'https://www.thesportsdb.com/api/v1/json/%s/eventstv.php?%s' % (
         urllib.parse.quote(TSDB_KEY), urllib.parse.urlencode({'d': day, 'a': country_param, 's': sport}))
     try:
-        for attempt in range(3):
-            try:
-                j = fetch_json(url)
-                listings = j.get('tvevents') or []
-                cache[cache_key] = {'fetched_at': now, 'listings': listings}
-                return listings
-            except Exception as e:
-                if attempt == 2:
-                    print('TheSportsDB TV fetch failed for %s/%s %s: %s' % (sport, country_param, day, e), file=sys.stderr)
-                    # an expired-but-present cache entry beats nothing at all if today's fetch fails
-                    return entry.get('listings') if entry else []
-                time.sleep(2)
-    finally:
-        time.sleep(0.3)   # only after a real API call, not a cache hit -- be polite, even though the premium tier showed no 429s in testing
+        j = fetch_tsdb_json(url)
+        listings = j.get('tvevents') or []
+        cache[cache_key] = {'fetched_at': now, 'listings': listings}
+        return listings
+    except Exception as e:
+        print('TheSportsDB TV fetch failed for %s/%s %s: %s' % (sport, country_param, day, e), file=sys.stderr)
+        # an expired-but-present cache entry beats nothing at all if today's fetch fails
+        return entry.get('listings') if entry else []
 
 
 def load_cache(path):
