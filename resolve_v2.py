@@ -54,6 +54,21 @@ LEAGUES = [
      'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
     {'comp': 'League Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4570', 'tsdb_sport': 'Soccer',
      'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+
+    # Same gap, bigger: Champions League and Europa League were never in this list either -- same root
+    # cause as the English cups above (never added, not a deliberate exclusion; the app's own COMPS list
+    # has always offered both as choosable tabs with nothing behind them). Ids NOT independently verified
+    # against the real TheSportsDB key the same way FA Cup/League Cup were (2026-10-28 audit: the public
+    # test key only returns a crippled 5-league demo subset, useless for lookups) -- 4480/4481 are the
+    # commonly documented TheSportsDB ids for these two, immediately adjacent to the already-confirmed
+    # FA Cup (4482), which is itself reasonable corroborating evidence (TheSportsDB clusters English/UEFA
+    # competition ids together) but is still not the same as a confirmed-by-hand check. If either comes
+    # back with 0 fixtures across several real runs, the id is wrong -- check it against the real key
+    # before assuming the competition itself has a genuine data gap.
+    {'comp': 'Champions League', 'fixtures': 'tsdb', 'tsdb_league_id': '4480', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'Europa League', 'fixtures': 'tsdb', 'tsdb_league_id': '4481', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
     {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
     {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
