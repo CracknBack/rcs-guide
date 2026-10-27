@@ -109,6 +109,26 @@ LEAGUES = [
     {'comp': 'Swiss Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4675', 'tsdb_sport': 'Soccer',
      'countries': [('CH', 'Switzerland'), ('UK', 'United_Kingdom')]},
 
+    # A-League, AFL, NRL: all three already exist as choosable comps/sport-selector entries in the app
+    # (COMPS, SPORT_GROUPS) but were never in this list, same gap as FA Cup/League Cup/Champions League/
+    # Europa League above. Ids looked up directly against the real TheSportsDB catalog (2026-10-28, the
+    # owner's own premium key -- the public test key only returns a crippled 5-league demo subset, no
+    # use for this). AFL and NRL are both single, unambiguous leagues; no "which competition" judgement
+    # call involved the way Rugby/Cricket below would need.
+    {'comp': 'A-League', 'fixtures': 'tsdb', 'tsdb_league_id': '4356', 'tsdb_sport': 'Soccer',
+     'countries': [('AU', 'Australia'), ('UK', 'United_Kingdom')]},
+    {'comp': 'AFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4456', 'tsdb_sport': 'Australian Football',
+     'countries': [('AU', 'Australia')]},
+    {'comp': 'NRL', 'fixtures': 'tsdb', 'tsdb_league_id': '4416', 'tsdb_sport': 'Rugby',
+     'countries': [('AU', 'Australia'), ('UK', 'United_Kingdom')]},
+    # Rugby and Cricket are NOT added here on purpose: both are a single generic comp in the app
+    # (COMPS/SPORT_GROUPS just has one "Rugby" and one "Cricket", no finer split), but TheSportsDB has
+    # dozens of real leagues under each -- Six Nations, United Rugby Championship, Rugby Championship,
+    # Super Rugby for Rugby; international Test/ODI/T20I series, IPL, Big Bash, The Hundred for Cricket
+    # -- with no single obviously-correct pick the way AFL/NRL/A-League each had exactly one real
+    # answer. Needs the owner to say which competitions the app's one generic tab should actually mean
+    # before guessing; multiple LEAGUES entries CAN share one 'comp' value if more than one is wanted.
+
     # Motorsport. No World Superbike (WSBK) entry exists in TheSportsDB's catalog (checked by hand,
     # 2026-10-26) -- only domestic "British Superbike Championship", a different, smaller series, so
     # it's deliberately left out rather than silently substituted for what was actually asked for.
