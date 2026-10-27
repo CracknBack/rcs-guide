@@ -44,6 +44,16 @@ UA = {'User-Agent': 'red-carpet-streams-guide-v2/1'}
 LEAGUES = [
     {'comp': 'Premier League', 'fixtures': 'football-data', 'fd_comp': 'PL', 'tsdb_sport': 'Soccer',
      'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+
+    # English domestic cups: not on football-data.org's free plan and previously left out of this list
+    # entirely, so the app never had fixture or TV data for them at all (confirmed missing, not just
+    # unmatched -- a real Fleetwood Town vs Arsenal EFL Cup tie, live-checked 2026-10-27, had a genuine
+    # TheSportsDB TV listing, 'BeIn Sports 3 Australia', that this app simply never fetched). TheSportsDB
+    # ids confirmed by hand the same day: FA Cup 4482, EFL Cup (Carabao Cup) 4570.
+    {'comp': 'FA Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4482', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'League Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4570', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
     {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
     {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
