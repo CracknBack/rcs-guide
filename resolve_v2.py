@@ -435,10 +435,12 @@ def resolve(cache):
 
 # guide-v2 runs on its own, fast, frequent schedule (unlike the ~20min XMLTV build), and
 # actions/deploy-pages replaces the WHOLE site on every deploy -- so a bare "write guide-v2.json and
-# deploy" would wipe out the existing sports.xml.gz/status.json/index.html/type.html between runs of
-# the main guide.yml job. Mirror whatever's actually live first (same status.json-driven site list
-# cmd_fetch_prev in build_guide.py already uses, extended to the files that one doesn't fetch), then
-# add guide-v2.json into that same directory, so every deploy carries the full site forward.
+# deploy" would wipe out the existing sports.xml.gz/status.json/index.html between runs of the main
+# guide.yml job. Mirror whatever's actually live first (same status.json-driven site list cmd_fetch_prev
+# in build_guide.py already uses, extended to the files that one doesn't fetch), then add guide-v2.json
+# into that same directory, so every deploy carries the full site forward. type.html is the one
+# exception -- it's a static file checked into this repo, not a build_guide.py output, so it's copied
+# straight off disk instead of mirrored from live (see below).
 def mirror_published(base, dest):
     base = base.rstrip('/')
     os.makedirs(dest, exist_ok=True)
@@ -456,8 +458,22 @@ def mirror_published(base, dest):
     if not get(base + '/status.json', os.path.join(dest, 'status.json')):
         print('No currently-published guide found -- first run, or the main guide.yml job has not run yet.', file=sys.stderr)
         return
-    for name in ('index.html', 'type.html', 'sports.xml.gz', '.nojekyll', 'tsdb-cache.json'):
+    for name in ('index.html', 'sports.xml.gz', '.nojekyll', 'tsdb-cache.json'):
         get('%s/%s' % (base, name), os.path.join(dest, name))
+    # type.html is a plain static file checked into THIS repo (unlike index.html/sports.xml.gz, which
+    # are build_guide.py outputs that only exist on the live site) -- mirroring it from "whatever's
+    # currently live" meant every edit to it needed a full guide.yml run (~20-35 min) to ever actually
+    # publish, even though the real content was sitting right here on disk the whole time. Copying the
+    # repo's own copy means any run of this script -- including the fast guide-v2 one, which runs every
+    # 30 minutes on its own schedule -- carries the latest committed version forward automatically.
+    local_type = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'type.html')
+    if os.path.exists(local_type):
+        with open(local_type, 'rb') as fh:
+            data = fh.read()
+        with open(os.path.join(dest, 'type.html'), 'wb') as fh:
+            fh.write(data)
+    else:
+        get(base + '/type.html', os.path.join(dest, 'type.html'))
     try:
         with open(os.path.join(dest, 'status.json'), encoding='utf-8') as fh:
             sites = [s['site'] for s in json.load(fh).get('sites', []) if s.get('status') in ('ok', 'kept previous')]
