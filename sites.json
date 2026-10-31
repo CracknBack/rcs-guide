@@ -3,11 +3,13 @@
   "days": 8,
   "max_connections": 4,
   "site_timeout_minutes": 50,
-  "max_channels_per_site": 180,
+  "max_channels_per_site": 400,
+  "_max_channels_note": "Raised from 180 (2026-10-31): epgshare01.online and i.mjh.nz are multi-country umbrella sites (process_site() globs every *.channels.xml in a site's folder, so one sites.json line pulls in dozens of country/provider variants at once) with far more candidate channels than a single-broadcaster site. Watch the status page after the first run to confirm this is enough headroom, not too much.",
   "keep_previous_if_below": 0.4,
   "sports_regex": "\\b(sports?|sportsnet|espn|bein|tnt|supersport|super sport|eurosport|dazn|stan|kayo|optus|fox (sports|footy|league|cricket)|sky sport|sporttv|sport tv|premier sports|setanta|arena|viaplay|canal\\+? ?(foot|sport)|movistar (deportes|liga)|laliga|la liga|bundesliga|serie a|ligue ?1|champions|premier league|cbs sports|golazo|tudn|universo|telemundo|peacock|usa network|nbcsn|mls|football|soccer|cricket|rugby|racing|f1|formula|motorsport)\\b",
   "always_regex": "^(bbc (one|two)|itv ?[1-4]?|channel [45]|s4c|nine|network 10|seven|sbs( viceland)?|abc|rte ?(one|two|2)?|virgin media (one|two)|tg4)\\b",
   "sport_programme_regex": "(football|soccer|match of the day|premier league|champions league|europa league|conference league|la ?liga|bundesliga|serie a|ligue ?1|fa cup|efl|carabao|world cup|nations league|formula ?(1|one)|grand prix|\\bf1\\b|\\bv(s|ersus)?\\.? |\\blive\\b.*\\b(match|game)\\b|boxing|\\bufc\\b|\\bmma\\b|mixed martial arts|fight night|\\bwwe\\b|wrestling)",
+  "_sites_note": "Expanded 2026-10-31 from 13 to 34 sources, researched and verified against iptv-org/epg's actual channel-ID mappings (not just site names -- several candidates were checked and rejected: jiotv.com and xem.kplus.vn both have real sport-named channels but every one currently has an empty xmltv_id upstream, so they'd add scrape cost for zero usable data; guidetnt.com looked like UK TNT Sports by name but is actually unrelated French terrestrial TV). Known real gaps with no available source anywhere in iptv-org/epg: Canada's TSN (only Sportsnet exists), a Philippines sports-specific parser (Cignal/PBA/ABS-CBN Sports), and South Africa's SABC/SuperSport beyond DStv (listed in epgshare01.online's ZA1 tag but unmapped, so not yet usable). Fox Sports Australia (foxsports.com.au) is left in despite returning 0 programmes on the last run -- confirmed a live upstream scrape failure, not a config problem; i.mjh.nz's foxtel/kayo variants now give Australia a second route in regardless.",
   "sites": [
     {"site": "sky.com",           "label": "Sky UK (Sky Sports, TNT Sports)"},
     {"site": "foxtel.com.au",     "label": "Foxtel (Australia)"},
@@ -21,6 +23,38 @@
     {"site": "movistarplus.es",   "label": "Movistar+ (Spain)"},
     {"site": "sky.de",            "label": "Sky Germany"},
     {"site": "tvpassport.com",    "label": "TV Passport"},
-    {"site": "tv24.co.uk",        "label": "TV24 (UK)"}
+    {"site": "tv24.co.uk",        "label": "TV24 (UK)"},
+
+    {"site": "epgshare01.online", "label": "EPGShare (AU/CA/HK/ID/IE/IN/MY/NZ/PH/SG/UK/US/VN/ZA + sport-specific feeds, multi-source umbrella)"},
+    {"site": "i.mjh.nz",          "label": "mjh.nz (AU: Foxtel/Kayo/Binge; NZ: Sky/SkySportNow; SG: Singtel -- multi-country umbrella)"},
+
+    {"site": "virgintvgo.virginmedia.com", "label": "Virgin Media UK (confirmed TNT Sports + Sky Sports channels mapped)"},
+    {"site": "entertainment.ie",           "label": "Ireland"},
+    {"site": "virginmediatelevision.ie",   "label": "Virgin Media Television Ireland"},
+
+    {"site": "watch.sportsnet.ca", "label": "Sportsnet Canada (only Canadian source in iptv-org/epg)"},
+
+    {"site": "abc.net.au", "label": "ABC Australia"},
+
+    {"site": "zap2it.com", "label": "Zap2it (US cable/satellite listings -- ESPN/FS1/NBC Sports etc. come in automatically)"},
+    {"site": "tvguide.com", "label": "TV Guide (US)"},
+    {"site": "plex.tv",  "label": "Plex (US free streaming, has dedicated Sports FAST channels)"},
+    {"site": "pluto.tv", "label": "Pluto TV (US free streaming, has dedicated Sports FAST channels)"},
+
+    {"site": "tataplay.com",      "label": "Tata Play (India, confirmed mapped)"},
+    {"site": "dishtv.in",         "label": "Dish TV India (confirmed mapped)"},
+    {"site": "airtelxstream.in",  "label": "Airtel Xstream (India, confirmed mapped)"},
+
+    {"site": "content.astro.com.my", "label": "Astro (Malaysia, confirmed mapped)"},
+
+    {"site": "singtel.com",         "label": "Singtel (Singapore, confirmed mapped)"},
+    {"site": "starhubtvplus.com",   "label": "StarHub TV+ (Singapore, confirmed mapped)"},
+    {"site": "mewatch.sg",          "label": "meWATCH (Singapore, confirmed mapped)"},
+
+    {"site": "vidio.com", "label": "Vidio (Indonesia, confirmed mapped -- Premier League + beIN Sports channels)"},
+
+    {"site": "nowplayer.now.com", "label": "Now TV (Hong Kong, confirmed mapped)"},
+
+    {"site": "tv.trueid.net", "label": "TrueID (Thailand, major sports rights holder)"}
   ]
 }
