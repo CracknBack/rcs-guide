@@ -94,6 +94,21 @@ LEAGUES = [
      'countries': [('UK', 'United_Kingdom'), ('NL', 'Netherlands')]},
     {'comp': 'Primeira Liga', 'fixtures': 'football-data', 'fd_comp': 'PPL', 'tsdb_sport': 'Soccer',
      'countries': [('UK', 'United_Kingdom'), ('PT', 'Portugal')]},
+    # Added 2026-10-31: confirmed via a live /v4/competitions call against the owner's own key that
+    # these 5, plus the 6 above, are all on the free football-data.org plan right now (13 total).
+    # 'countries' below are a best-effort guess at where each is actually broadcast/searched for, NOT
+    # independently confirmed the way the others above were -- flag to the owner to adjust if a region
+    # is missing or wrong.
+    {'comp': 'Championship', 'fixtures': 'football-data', 'fd_comp': 'ELC', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom')]},
+    {'comp': 'Brazilian Serie A', 'fixtures': 'football-data', 'fd_comp': 'BSA', 'tsdb_sport': 'Soccer',
+     'countries': [('BR', 'Brazil'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Copa Libertadores', 'fixtures': 'football-data', 'fd_comp': 'CLI', 'tsdb_sport': 'Soccer',
+     'countries': [('BR', 'Brazil'), ('AR', 'Argentina'), ('UK', 'United_Kingdom')]},
+    {'comp': 'European Championship', 'fixtures': 'football-data', 'fd_comp': 'EC', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'World Cup', 'fixtures': 'football-data', 'fd_comp': 'WC', 'tsdb_sport': 'Soccer',
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
     {'comp': 'Belgian Pro League', 'fixtures': 'tsdb', 'tsdb_league_id': '4338', 'tsdb_sport': 'Soccer',
      'countries': [('BE', 'Belgium'), ('UK', 'United_Kingdom')]},
     {'comp': 'Scottish Premiership', 'fixtures': 'tsdb', 'tsdb_league_id': '4330', 'tsdb_sport': 'Soccer',
@@ -214,15 +229,54 @@ def parse_ts(raw_ts, raw_date='', raw_time=''):
     return None
 
 
-def fetch_football_data_fixtures(league):
+#  football-data.org's free plan is 10 calls/minute (confirmed from the owner's own account). Going
+# from the original 6 football-data leagues to 13 (2026-10-31) means this loop alone is 13 calls a
+# run -- over the limit if fired back-to-back with no pacing, which this function previously did not
+# do at all (there was no need to, at 6 calls). Same sliding-window approach as
+# tsdb_rate_limit_wait, just with a lower, margin-under-10 limit, plus an actual 429 retry instead of
+# silently returning no fixtures for whichever league loses the race.
+FD_RATE_LIMIT = 8
+_fd_call_times = []
+
+
+def fd_rate_limit_wait():
+    now = time.time()
+    while _fd_call_times and now - _fd_call_times[0] > 60:
+        _fd_call_times.pop(0)
+    if len(_fd_call_times) >= FD_RATE_LIMIT:
+        wait = 60 - (now - _fd_call_times[0]) + 0.5
+        if wait > 0:
+            print('Pacing for the football-data.org rate limit: waiting %.1fs' % wait, file=sys.stderr)
+            time.sleep(wait)
+    _fd_call_times.append(time.time())
+
+
+def fetch_football_data_fixtures(league, max_retries=3):
     if not FD_KEY:
         print('No FD_KEY set -- skipping %s fixtures.' % league['comp'], file=sys.stderr)
         return []
     url = 'https://api.football-data.org/v4/competitions/%s/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED' % league['fd_comp']
-    try:
-        j = fetch_json(url, {'X-Auth-Token': FD_KEY})
-    except Exception as e:
-        print('Fixtures fetch failed for %s: %s' % (league['comp'], e), file=sys.stderr)
+    j = None
+    for attempt in range(max_retries):
+        fd_rate_limit_wait()
+        try:
+            j = fetch_json(url, {'X-Auth-Token': FD_KEY})
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries - 1:
+                retry_after = e.headers.get('Retry-After') if e.headers else None
+                wait = float(retry_after) if retry_after and retry_after.isdigit() else 65
+                print('429 from football-data.org -- waiting %.0fs before retrying %s (attempt %d/%d)' %
+                      (wait, league['comp'], attempt + 1, max_retries), file=sys.stderr)
+                time.sleep(wait)
+                continue
+            print('Fixtures fetch failed for %s: %s' % (league['comp'], e), file=sys.stderr)
+            return []
+        except Exception as e:
+            print('Fixtures fetch failed for %s: %s' % (league['comp'], e), file=sys.stderr)
+            return []
+    if j is None:
+        print('Fixtures fetch exhausted retries for %s.' % league['comp'], file=sys.stderr)
         return []
     horizon = datetime.now(timezone.utc) + timedelta(days=DAYS_AHEAD)
     out = []
