@@ -170,10 +170,24 @@ LEAGUES = [
 # bare request with no spoofing attempted). It only ever reports US broadcasters -- checked both
 # 'broadcasts' and 'geoBroadcasts' on a real event, the latter carries a 'region' field but it was 'us'
 # every time, and came back empty for Eredivisie rather than naming a non-US region. So this only ever
-# strengthens the US side of channels[]; the AU/UK side below (RIGHTS_SEED) still has to come from
-# somewhere else. Used for exactly the comps this file's own module docstring already flagged as having
-# near-empty TheSportsDB TV data (PGA Tour, European Tour, NASCAR), plus Eredivisie, whose TV side is
-# dead the same way despite having real football-data.org fixtures already.
+# strengthens the US side of channels[]. Used for exactly the comps this file's own module docstring
+# already flagged as having near-empty TheSportsDB TV data (PGA Tour, European Tour, NASCAR), plus
+# Eredivisie, whose TV side is dead the same way despite having real football-data.org fixtures already.
+#
+# No AU/UK/NZ/CA equivalent: a standing-rights seed (brand names, no per-fixture data) used to fill
+# that gap here, removed 2026-11-02. Tested live, not assumed: pulled the actual grabber configs from
+# iptv-org/epg (the most credible maintained open-source project for exactly this) for foxsports.com.au
+# and sky.com, hit their real API endpoints directly -- Fox Sports AU's tvguide API returns HTTP 200
+# with an empty result (site itself 404s, the whole micro-site looks decommissioned), Sky UK's epgsky.com
+# API 403s without private app auth headers. Combined with TheSportsDB's own eventstv.php (confirmed
+# empty for these comps) and a separate dead third-party AU EPG aggregator checked the same session,
+# that's four independent real sources confirmed dead or walled off for this specific data -- there is
+# currently no working way to get real per-fixture AU/UK/NZ/CA channel numbers server-side. The real fix
+# lives client-side instead (tv-app/index.html): scan the USER'S OWN already-loaded EPG -- the one place
+# this data legitimately exists without scraping anything, since it's their own subscription -- and
+# promote a real match straight to confirmed (see f1GuideChans, and its planned generalisation to every
+# sport). A guessed brand name was worse than nothing: it claimed "likely" on zero real signal for a
+# specific fixture, for a problem the client-side fix actually solves with real data when it exists.
 ESPN_SOURCES = [
     # 'tournament': one multi-day event live at a time (golf) -- the DEFAULT scoreboard call (no
     # ?dates= at all) already returns the current/nearest tournament with its own startDate/endDate
@@ -195,30 +209,8 @@ ESPN_SOURCES = [
 # No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
 # exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
 # real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
-# MotoGP gets no ESPN entry and relies on RIGHTS_SEED below instead.
-
-# Standing regional rights deals, not per-match data -- independently verified 2026-11-01 (web search,
-# not guessed from general knowledge; see the session this was built from for sources: Fox Sports/Kayo
-# for AU motorsport and golf, Sky Sports Golf for UK golf, TrillerTV as Eredivisie's actual AU/UK/IE
-# rights holder 2025-2030 -- NOT the ESPN-NL channels an earlier draft of this guessed at, which would
-# almost never appear in an AU/UK/US-facing IPTV playlist anyway). Seeded into every fixture of these
-# comps because TheSportsDB's eventstv.php is confirmed structurally empty for them in these markets --
-# this file's own module docstring already flagged PGA/European Tour/MotoGP as "close to empty" TV
-# data, so there is no per-match "did eventstv.php actually fail this time" check to gate this on; the
-# gap is the competition itself, not any one fixture. Brand name only, deliberately no channel number
-# (e.g. "Fox Sports" not "Fox Sports 506") -- a numbered slot drifts whenever two of a provider's own
-# properties collide on a weekend (a real, named concern: NASCAR/MotoGP/golf overflowing onto a
-# neighbouring Fox Sports number during a clash), and tsdbGroups() on the client already has its own
-# brand-word fallback tier for exactly this -- a bare brand name still finds whatever number the user's
-# own provider actually gave it. confidence is 'likely', same as every other claim in this file: a
-# standing rights deal is strong evidence, not proof of what's actually airing in that slot this minute.
-RIGHTS_SEED = {
-    'NASCAR': [('Fox Sports', 'AU'), ('Kayo', 'AU')],
-    'MotoGP': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('TNT Sports', 'UK')],
-    'PGA Tour': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('Sky Sports Golf', 'UK'), ('Sky Sports Main Event', 'UK')],
-    'European Tour': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('Sky Sports Golf', 'UK')],
-    'Eredivisie': [('TrillerTV', 'AU'), ('TrillerTV', 'UK'), ('Premier Sports', 'UK')],
-}
+# MotoGP gets no server-side channel source at all now -- see the comment above ESPN_SOURCES for why
+# (the standing-rights seed that used to fill this in was removed 2026-11-02).
 
 
 def fetch_json(url, headers=None):
@@ -610,14 +602,6 @@ def espn_channels_daily(src, fixtures, cache, now_iso):
                     f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
 
 
-def seed_rights_table(league, fixtures, now_iso):
-    for channel, country in RIGHTS_SEED.get(league['comp']) or []:
-        for f in fixtures:
-            f['channels'].append({'channel': channel, 'country': country, 'kind': 'LIVE', 'inferred_kind': True,
-                                   'start': datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc).isoformat(),
-                                   'confidence': 'likely', 'source': 'rights-table', 'checked': now_iso})
-
-
 def resolve_league(league, cache):
     fixtures = fetch_football_data_fixtures(league) if league['fixtures'] == 'football-data' else fetch_tsdb_fixtures(league, cache)
     if not fixtures:
@@ -663,7 +647,6 @@ def resolve_league(league, cache):
             espn_channels_tournament(espn_src, fixtures, cache, now_iso)
         else:
             espn_channels_daily(espn_src, fixtures, cache, now_iso)
-    seed_rights_table(league, fixtures, now_iso)
 
     for f in fixtures:
         del f['kick_ts']
