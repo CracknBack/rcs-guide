@@ -31,7 +31,7 @@ the moment it's actually watched -- that second check only the app itself can do
 provider's own guide, which never leaves the device. This file is an input to that check, not a
 replacement for it.
 """
-import json, os, sys, time, urllib.request, urllib.parse, urllib.error
+import json, os, re, signal, sys, time, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timedelta, timezone
 
 FD_KEY = os.environ.get('FD_KEY', '').strip()
@@ -671,14 +671,68 @@ def resolve_league(league, cache):
     return fixtures
 
 
-def resolve(cache):
+class Interrupted(Exception):
+    """Raised from a SIGTERM handler so the resolve() loop below can unwind through its own
+    try/finally instead of the process just vanishing mid-league the way the default SIGTERM
+    disposition would -- GitHub Actions sends exactly this signal when timeout-minutes is hit."""
+
+
+def _raise_interrupted(signum, frame):
+    raise Interrupted()
+
+
+def _slug(s):
+    return re.sub(r'[^a-z0-9]', '', s.lower())
+
+
+# Friendly CLI names that don't slug-match their real comp string closely enough on their own
+# (European Tour is branded DP World Tour on air now; everything else below already substring-
+# matches via _slug, e.g. "pga" is already inside "pgatour").
+_ONLY_ALIASES = {'dpwt': 'European Tour', 'dpworldtour': 'European Tour'}
+
+
+def leagues_matching(only):
+    """only: a list of CLI slugs (e.g. ['nascar', 'motogp', 'pga', 'dpwt', 'eredivisie']), or falsy
+    for every league. Matches loosely (substring either direction on the slugged comp name) since
+    this is a local debugging convenience, not the real selection logic anything ships behind."""
+    if not only:
+        return LEAGUES
+    wanted = [w.strip().lower() for w in only if w.strip()]
+    out = []
+    for league in LEAGUES:
+        slug = _slug(league['comp'])
+        for w in wanted:
+            if _ONLY_ALIASES.get(w) == league['comp'] or (_slug(w) and (_slug(w) in slug or slug in _slug(w))):
+                out.append(league)
+                break
+    return out
+
+
+def resolve(cache, only=None, checkpoint=None):
+    """checkpoint: called after every league resolves, win or lose, so a run that gets killed (a
+    real SIGTERM from the workflow's timeout-minutes, confirmed the actual cause of a run that
+    reached only 10 of 30+ leagues before being cut off) keeps whatever it already paid TheSportsDB's
+    rate limit for -- previously save_cache() only ran once resolve() returned, so a killed run lost
+    every API call it had made, and the next run started from the exact same cold cache and choked on
+    the same early leagues all over again."""
     now_iso = datetime.now(timezone.utc).isoformat()
     events = []
-    for league in LEAGUES:
-        got = resolve_league(league, cache)
-        print('%s: %d fixtures resolved' % (league['comp'], len(got)), file=sys.stderr)
-        events.extend(got)
-    return {'generated': now_iso, 'competitions': [l['comp'] for l in LEAGUES], 'events': events}
+    leagues = leagues_matching(only)
+    old_handler = signal.signal(signal.SIGTERM, _raise_interrupted)
+    try:
+        for league in leagues:
+            try:
+                got = resolve_league(league, cache)
+            except Interrupted:
+                print('Interrupted during %s -- keeping what already resolved.' % league['comp'], file=sys.stderr)
+                break
+            print('%s: %d fixtures resolved' % (league['comp'], len(got)), file=sys.stderr)
+            events.extend(got)
+            if checkpoint:
+                checkpoint()
+    finally:
+        signal.signal(signal.SIGTERM, old_handler)
+    return {'generated': now_iso, 'competitions': [l['comp'] for l in leagues], 'events': events}
 
 
 # guide-v2 runs on its own, fast, frequent schedule (unlike the ~20min XMLTV build), and
@@ -740,6 +794,8 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default='public', help='directory to write guide-v2.json into')
     ap.add_argument('--mirror-base', default='', help='Pages base URL to mirror the existing guide from first (e.g. https://OWNER.github.io/REPO)')
+    ap.add_argument('--only', default='', help='comma-separated competition slugs to resolve, e.g. '
+                     '"nascar,motogp,pga,dpwt,eredivisie" -- for quick local checks, never used in CI')
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -748,7 +804,8 @@ if __name__ == '__main__':
 
     cache_path = os.path.join(args.out, 'tsdb-cache.json')
     cache = load_cache(cache_path)
-    data = resolve(cache)
+    only = [s for s in args.only.split(',') if s.strip()] if args.only else None
+    data = resolve(cache, only=only, checkpoint=lambda: save_cache(cache_path, cache))
     save_cache(cache_path, cache)
 
     out_path = os.path.join(args.out, 'guide-v2.json')
