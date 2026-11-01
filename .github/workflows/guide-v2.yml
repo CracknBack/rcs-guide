@@ -13,12 +13,15 @@ name: Build guide-v2 (resolved events)
 
 on:
   schedule:
-    # SAFETY STOPGAP (2026-10-26): the owner's TheSportsDB plan is ~100 calls/hour. Even Premier-League-
-    # only at every 15 minutes was already ~148 calls/hour, over budget, with no per-day caching to bring
-    # it down. Slowed to every 30 minutes as an immediate fix while resolve_v2.py gets a proper tiered
-    # cache (refresh today/tomorrow often, far-ahead days rarely) -- see that file's own comments once
-    # it's updated. Do not tighten this again without re-doing the call-count math against the real quota.
-    - cron: '*/30 * * * *'
+    # Was slowed to every 30 minutes (2026-10-26) on the mistaken belief the owner's TheSportsDB plan
+    # was ~100 calls/hour. It is not: confirmed against TheSportsDB's own published tier docs
+    # (2026-11-01) that the Premium/Patreon plan is genuinely 100 calls/MINUTE -- a factor-of-60 error,
+    # and resolve_v2.py's own rate limiter (tsdb_rate_limit_wait, margin to 85/min) was already correctly
+    # built against the real number the whole time; only this schedule and NEAR_MAX_AGE were ever
+    # throttled off the wrong one. Restored to every 15 minutes, the original design -- the in-code
+    # limiter paces every call safely against the real quota regardless of how often this job runs, so
+    # there is no quota reason to run it any slower than match-day freshness calls for.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:

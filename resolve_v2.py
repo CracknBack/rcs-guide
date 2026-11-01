@@ -366,16 +366,20 @@ def teams_match(ev_home, ev_away, listing_title):
 # same as everything else -- never a static rule based on a channel's usual name.
 
 
-# Tiered cache: the owner's TheSportsDB plan is ~100 calls/hour. Fetching every (league, country, day)
-# combination on every run -- the original design -- was already ~148 calls/hour for Premier League
-# ALONE at a 15-minute schedule, before any of the other leagues below existed. A day far in the future
-# essentially never changes between one run and the next; only "today" and "tomorrow" are worth
-# refreshing often. NEAR_MAX_AGE/FAR_MAX_AGE control that, and the cache is carried forward between runs
-# the same way guide-v2.json itself is (see mirror_published) -- a GitHub Actions run has no disk of its
-# own to remember anything in otherwise.
-NEAR_MAX_AGE = 25 * 60         # today/tomorrow: refetch roughly every run (schedule is every 30 min) --
-                                # kept responsive deliberately: a channel confirmed an hour before kickoff
-                                # should actually show up before kickoff, not on the next slow tick.
+# Tiered cache: confirmed via TheSportsDB's own published tier docs (2026-11-01) that the Premium
+# (Patreon) plan this key is on is genuinely 100 calls/MINUTE, not /hour -- an earlier pass here got that
+# wrong by a factor of 60 and throttled the whole schedule (and guide-v2.yml's cron) off a budget that
+# was never real. tsdb_rate_limit_wait()'s sliding window already paces every call safely against the
+# true 100/min limit regardless of how often this job is triggered; the cache below exists to avoid
+# WASTING calls on data that hasn't changed, not to dodge a quota that was being miscalculated. A day far
+# in the future essentially never changes between one run and the next; only "today" and "tomorrow" are
+# worth refreshing often. NEAR_MAX_AGE/FAR_MAX_AGE control that, and the cache is carried forward between
+# runs the same way guide-v2.json itself is (see mirror_published) -- a GitHub Actions run has no disk of
+# its own to remember anything in otherwise.
+NEAR_MAX_AGE = 13 * 60          # today/tomorrow: refetch roughly every run (schedule is every 15 min, see
+                                 # guide-v2.yml) -- kept responsive deliberately: a channel confirmed an
+                                 # hour before kickoff should actually show up before kickoff, not on the
+                                 # next tick.
 FAR_MAX_AGE = 24 * 3600         # everything else: once a day (2026-10-26, after confirming the real
                                 # TheSportsDB quota is 100/minute, not /hour -- there was no longer a
                                 # quota reason to keep this as tight as the original 6h; a listing 5-10
