@@ -708,19 +708,34 @@ def leagues_matching(only):
     return out
 
 
-def resolve(cache, only=None, checkpoint=None):
-    """checkpoint: called after every league resolves, win or lose, so a run that gets killed (a
-    real SIGTERM from the workflow's timeout-minutes, confirmed the actual cause of a run that
-    reached only 10 of 30+ leagues before being cut off) keeps whatever it already paid TheSportsDB's
-    rate limit for -- previously save_cache() only ran once resolve() returned, so a killed run lost
-    every API call it had made, and the next run started from the exact same cold cache and choked on
-    the same early leagues all over again."""
+def resolve(cache, only=None, checkpoint=None, deadline=None):
+    """checkpoint: called after every league resolves, win or lose, so a run that DOES finish (see
+    deadline below) keeps every API call it already paid TheSportsDB's rate limit for even if an
+    individual league fails -- previously save_cache() only ran once resolve() returned.
+
+    deadline: a time.time() value. The loop below stops starting NEW leagues once it's past this,
+    and returns normally (exit 0) with whatever it has. This matters more than the checkpointing or
+    the SIGTERM handler: guide-v2.yml's timeout-minutes is a JOB-level timeout, which CANCELS THE
+    WHOLE JOB outright when it fires -- it does not behave like a failed step that a later
+    `if: always()` step could react to, and it does not give this process a chance to flush anything
+    to disk either. Concretely: the only way tsdb-cache.json/guide-v2.json ever reach the live site
+    is checkout -> resolve_v2.py -> configure-pages -> upload-pages-artifact -> a SEPARATE deploy
+    job. If the job timeout kills resolve_v2.py mid-run, upload-pages-artifact never runs, nothing
+    this run checkpointed to LOCAL disk is ever published, and the next run pulls the exact same
+    stale cache back down via mirror_published() -- the per-league checkpointing below would do
+    nothing in that scenario. Exiting on our own, safely under the job's ceiling, is what actually
+    lets a partial run's progress reach the next one. The SIGTERM handler stays as a second line of
+    defence (a manual Ctrl-C locally, or a timeout that fires 1 second early for some reason), not
+    the primary mechanism."""
     now_iso = datetime.now(timezone.utc).isoformat()
     events = []
     leagues = leagues_matching(only)
     old_handler = signal.signal(signal.SIGTERM, _raise_interrupted)
     try:
         for league in leagues:
+            if deadline and time.time() > deadline:
+                print('Soft deadline reached -- stopping before %s so the publish steps still run.' % league['comp'], file=sys.stderr)
+                break
             try:
                 got = resolve_league(league, cache)
             except Interrupted:
@@ -796,6 +811,13 @@ if __name__ == '__main__':
     ap.add_argument('--mirror-base', default='', help='Pages base URL to mirror the existing guide from first (e.g. https://OWNER.github.io/REPO)')
     ap.add_argument('--only', default='', help='comma-separated competition slugs to resolve, e.g. '
                      '"nascar,motogp,pga,dpwt,eredivisie" -- for quick local checks, never used in CI')
+    # Must stay comfortably under guide-v2.yml's job-level timeout-minutes (currently 45) -- that
+    # timeout cancels the whole job outright when it fires, with no chance for this process or any
+    # later step to run, so the only way a slow/throttled run's partial progress ever gets published
+    # is to exit cleanly on our own first. The workflow passes its own timeout-minutes in here (minus
+    # a margin) explicitly, specifically so the two numbers can't silently drift apart again.
+    ap.add_argument('--deadline-minutes', type=float, default=38.0,
+                     help='stop starting new leagues after this many minutes and exit cleanly')
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -805,7 +827,8 @@ if __name__ == '__main__':
     cache_path = os.path.join(args.out, 'tsdb-cache.json')
     cache = load_cache(cache_path)
     only = [s for s in args.only.split(',') if s.strip()] if args.only else None
-    data = resolve(cache, only=only, checkpoint=lambda: save_cache(cache_path, cache))
+    deadline = time.time() + args.deadline_minutes * 60
+    data = resolve(cache, only=only, checkpoint=lambda: save_cache(cache_path, cache), deadline=deadline)
     save_cache(cache_path, cache)
 
     out_path = os.path.join(args.out, 'guide-v2.json')

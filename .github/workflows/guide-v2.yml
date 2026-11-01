@@ -39,9 +39,13 @@ jobs:
     # 20 was too tight -- a real run on 2026-11-01 reached only 10 of 30+ leagues before being killed
     # by this exact ceiling, entirely on TheSportsDB's rate-limit pacing (~42s between windows) plus
     # real 429s/503s, nowhere near this job's own in-code limiter being wrong. 45 gives a cold/throttled
-    # run room to actually finish once; resolve_v2.py now checkpoints the cache after every league (not
-    # just at the very end), so even a run that still doesn't finish in 45 min leaves the next one with
-    # a warmer cache instead of restarting from zero and choking on the same early leagues again.
+    # run real room -- but this ceiling is a last resort, not the actual fix: a JOB-level timeout
+    # cancels the whole job outright with no later step (not even one marked if: always()) ever
+    # getting to run, so if THIS is what stops resolve_v2.py, nothing it checkpointed locally ever
+    # reaches upload-pages-artifact/deploy below, and the next run is back to square one regardless
+    # of how much the cache checkpointing helped mid-run. --deadline-minutes (see the run step below)
+    # is the real fix: resolve_v2.py exits cleanly on its own well before this fires, so the job is
+    # never actually killed.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -54,11 +58,22 @@ jobs:
         env:
           FD_KEY: ${{ secrets.FD_KEY }}
           TSDB_KEY: ${{ secrets.TSDB_KEY }}
-        run: python3 resolve_v2.py --out public --mirror-base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+        # --deadline-minutes is this job's own timeout-minutes above, minus a margin for
+        # checkout/setup (already past by this point) and configure-pages/upload-pages-artifact
+        # below (seconds, per past runs) -- kept here instead of resolve_v2.py's own default so the
+        # two numbers move together if timeout-minutes above is ever changed again.
+        run: python3 resolve_v2.py --out public --deadline-minutes 38 --mirror-base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
 
+      # if: always() on both below: NOT a safety net for the job timeout above (a job-level timeout
+      # cancels the whole job outright -- no later step runs regardless of this). It's for the
+      # ordinary case the deadline doesn't cover: resolve_v2.py itself raising an unhandled exception
+      # and exiting non-zero some other way. Without this, that failure mode would ALSO publish
+      # nothing, same as a timeout, for a completely avoidable reason.
       - uses: actions/configure-pages@v5
+        if: always()
 
       - uses: actions/upload-pages-artifact@v3
+        if: always()
         with:
           path: public
 
@@ -72,6 +87,13 @@ jobs:
 
   deploy:
     needs: build
+    # Default needs: behaviour requires build to SUCCEED -- but one failed step (resolve_v2.py
+    # throwing, not the deadline-covered timeout case) marks the whole build job "failure" even
+    # though the if: always() steps above still uploaded a valid partial artifact, so without this
+    # override that upload would reach nowhere, same as if nothing had run at all. !cancelled()
+    # still correctly skips this if build was genuinely cancelled outright (the job-level timeout
+    # case) -- there's nothing to deploy there regardless.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
