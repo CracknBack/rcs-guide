@@ -728,7 +728,7 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
     defence (a manual Ctrl-C locally, or a timeout that fires 1 second early for some reason), not
     the primary mechanism."""
     now_iso = datetime.now(timezone.utc).isoformat()
-    events = []
+    events, resolved = [], []
     leagues = leagues_matching(only)
     old_handler = signal.signal(signal.SIGTERM, _raise_interrupted)
     try:
@@ -743,11 +743,42 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
                 break
             print('%s: %d fixtures resolved' % (league['comp'], len(got)), file=sys.stderr)
             events.extend(got)
+            resolved.append(league['comp'])
             if checkpoint:
                 checkpoint()
     finally:
         signal.signal(signal.SIGTERM, old_handler)
-    return {'generated': now_iso, 'competitions': [l['comp'] for l in leagues], 'events': events}
+    # 'resolved' (as opposed to 'competitions', every comp this call was ASKED to cover) is what lets
+    # a caller tell a genuinely finished run apart from one the deadline/an interrupt cut short -- see
+    # merge_unresolved() below, which carries the previous guide-v2.json forward for exactly the comps
+    # this run didn't get to, instead of a partial run silently wiping them off the live site.
+    return {'generated': now_iso, 'competitions': [l['comp'] for l in leagues], 'resolved': resolved, 'events': events}
+
+
+def fetch_prev_guide_v2(base):
+    try:
+        return fetch_json(base.rstrip('/') + '/guide-v2.json')
+    except Exception as e:
+        print('Could not fetch the previously-published guide-v2.json (%s) -- a partial run will not '
+              'be able to carry forward any competitions it didn\'t reach.' % e, file=sys.stderr)
+        return None
+
+
+def merge_unresolved(data, prev):
+    """actions/deploy-pages replaces the WHOLE site on every deploy (see the comment above
+    mirror_published) -- so a run that stops early on --deadline-minutes or an interrupt and simply
+    writes what it has would silently erase every OTHER competition from the live guide-v2.json until
+    some future run happens to get far enough to re-resolve them. Carries the previous run's events
+    forward for exactly the competitions this run didn't reach, never for ones it did (a fresh
+    'likely' beats a stale one)."""
+    missing = set(data['competitions']) - set(data['resolved'])
+    if not missing or not prev:
+        return data
+    carried = [e for e in prev.get('events', []) if e.get('comp') in missing]
+    print('Carrying forward %d event(s) from the previous guide for %d competition(s) this run '
+          'didn\'t reach: %s' % (len(carried), len(missing), ', '.join(sorted(missing))), file=sys.stderr)
+    data['events'] = data['events'] + carried
+    return data
 
 
 # guide-v2 runs on its own, fast, frequent schedule (unlike the ~20min XMLTV build), and
@@ -830,6 +861,9 @@ if __name__ == '__main__':
     deadline = time.time() + args.deadline_minutes * 60
     data = resolve(cache, only=only, checkpoint=lambda: save_cache(cache_path, cache), deadline=deadline)
     save_cache(cache_path, cache)
+
+    if set(data['resolved']) != set(data['competitions']) and args.mirror_base:
+        data = merge_unresolved(data, fetch_prev_guide_v2(args.mirror_base))
 
     out_path = os.path.join(args.out, 'guide-v2.json')
     with open(out_path, 'w', encoding='utf-8') as fh:
