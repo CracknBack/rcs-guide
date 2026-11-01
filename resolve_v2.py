@@ -42,8 +42,19 @@ UA = {'User-Agent': 'red-carpet-streams-guide-v2/1'}
 # comp must match the TV app's COMPS display name exactly, so the app can line up events with the
 # competition tab a user picked. countries: (short code the app understands, TheSportsDB's "a=" param).
 LEAGUES = [
+    # Widened 2026-11-01: this was only ever asking TheSportsDB about 3 countries, UK/US/AU, while the
+    # TV app's own PL_CH table (already researched and shipped) has real broadcasters in 9 -- Ireland,
+    # Canada, New Zealand, South Africa, Malaysia and India were simply never asked about, not missing
+    # from TheSportsDB. Confirmed real case: a live fixture's guide-v2 entry had exactly the 4 UK/US
+    # broadcasters and nothing else, while Sky Sport 8 (New Zealand) was independently verified (the
+    # broadcaster's own listings page) to be showing the same match. Reusing PL_CH's own country list
+    # here rather than guessing a new one. Singapore added the same day -- independently verified
+    # (StarHub TV+/Singtel TV cross-carriage) for the same real match, and not even in PL_CH itself, a
+    # genuine gap in that table too, not just here.
     {'comp': 'Premier League', 'fixtures': 'football-data', 'fd_comp': 'PL', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('IE', 'Ireland'),
+                   ('CA', 'Canada'), ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('MY', 'Malaysia'), ('IN', 'India'),
+                   ('SG', 'Singapore')]},
 
     # English domestic cups: not on football-data.org's free plan and previously left out of this list
     # entirely, so the app never had fixture or TV data for them at all (confirmed missing, not just
@@ -65,10 +76,15 @@ LEAGUES = [
     # competition ids together) but is still not the same as a confirmed-by-hand check. If either comes
     # back with 0 fixtures across several real runs, the id is wrong -- check it against the real key
     # before assuming the competition itself has a genuine data gap.
+    # Widened 2026-11-01, same reason as Premier League above: countries added here match the TV app's
+    # own CL_CH/EL_CH tables (Canada and New Zealand DAZN, South Africa SuperSport, India Sony LIV/beIN),
+    # not newly guessed.
     {'comp': 'Champions League', 'fixtures': 'tsdb', 'tsdb_league_id': '4480', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
+                   ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('IN', 'India')]},
     {'comp': 'Europa League', 'fixtures': 'tsdb', 'tsdb_league_id': '4481', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
+                   ('NZ', 'New_Zealand'), ('ZA', 'South_Africa')]},
     {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
     {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
@@ -82,14 +98,16 @@ LEAGUES = [
     # /v4/competitions listing on 2026-10-26) -- same source as Premier League, more detailed status
     # than TheSportsDB's generic strStatus. The rest aren't on that plan, so fixtures come from
     # TheSportsDB itself instead, same as NBA/NHL/MLB/NFL above.
+    # Widened 2026-11-01, same reason as above -- countries added match each league's own curated table
+    # in the TV app (LL_CH/BL_CH/L1_CH/SA_CH), not newly guessed.
     {'comp': 'La Liga', 'fixtures': 'football-data', 'fd_comp': 'PD', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'), ('ZA', 'South_Africa')]},
     {'comp': 'Bundesliga', 'fixtures': 'football-data', 'fd_comp': 'BL1', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('DE', 'Germany'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('DE', 'Germany'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada')]},
     {'comp': 'Ligue 1', 'fixtures': 'football-data', 'fd_comp': 'FL1', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('FR', 'France'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('FR', 'France'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada'), ('ZA', 'South_Africa')]},
     {'comp': 'Serie A', 'fixtures': 'football-data', 'fd_comp': 'SA', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('IT', 'Italy'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('IT', 'Italy'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada'), ('IN', 'India'), ('MY', 'Malaysia'), ('ZA', 'South_Africa')]},
     {'comp': 'Eredivisie', 'fixtures': 'football-data', 'fd_comp': 'DED', 'tsdb_sport': 'Soccer',
      'countries': [('UK', 'United_Kingdom'), ('NL', 'Netherlands')]},
     {'comp': 'Primeira Liga', 'fixtures': 'football-data', 'fd_comp': 'PPL', 'tsdb_sport': 'Soccer',
@@ -147,8 +165,19 @@ LEAGUES = [
     # Motorsport. No World Superbike (WSBK) entry exists in TheSportsDB's catalog (checked by hand,
     # 2026-10-26) -- only domestic "British Superbike Championship", a different, smaller series, so
     # it's deliberately left out rather than silently substituted for what was actually asked for.
+    # Widened 2026-11-01: real case checked -- guide-v2 had exactly 2 broadcasters (Sky Sports F1 UK,
+    # Apple TV+ US) for a live race because those were the only 3 countries ever asked about (AU came
+    # back with nothing). Unlike the football leagues above, F1 had no existing curated table in the app
+    # to reuse, so these were looked up fresh (two separate real web searches, 2026-11-01): Canada --
+    # TSN/RDS, every race including practice/qualifying; Ireland -- Sky UK's feed; New Zealand -- Sky
+    # Sport (the same group already confirmed showing Premier League); South Africa -- SuperSport;
+    # Malaysia and Singapore -- beIN Sports, part of a confirmed 10-territory Asian F1 deal through 2030.
+    # Stopped at these 6 additions (9 total) rather than padding further -- these are the ones an actual
+    # source named; adding more without one would be exactly the guessed-broadcaster-table problem this
+    # project has been trying to get away from.
     {'comp': 'Formula 1', 'fixtures': 'tsdb', 'tsdb_league_id': '4370', 'tsdb_sport': 'Motorsport',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
+                   ('IE', 'Ireland'), ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('MY', 'Malaysia'), ('SG', 'Singapore')]},
     {'comp': 'MotoGP', 'fixtures': 'tsdb', 'tsdb_league_id': '4407', 'tsdb_sport': 'Motorsport',
      'countries': [('UK', 'United_Kingdom'), ('AU', 'Australia')]},
     {'comp': 'IndyCar', 'fixtures': 'tsdb', 'tsdb_league_id': '4373', 'tsdb_sport': 'Motorsport',
