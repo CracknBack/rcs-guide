@@ -41,30 +41,36 @@ UA = {'User-Agent': 'red-carpet-streams-guide-v2/1'}
 
 # comp must match the TV app's COMPS display name exactly, so the app can line up events with the
 # competition tab a user picked. countries: (short code the app understands, TheSportsDB's "a=" param).
+# One shared list of countries, asked for EVERY competition below, instead of a separately hand-
+# researched list per league -- that doesn't scale (explicitly rejected 2026-11-01: "I'm not going to
+# go on Google and research every country for every league, that's madness", and it's correct). Built
+# from the union of every country already proven to carry real TheSportsDB sports-TV data somewhere in
+# this file's history (not a fresh guess), plus Singapore (independently verified 2026-11-01 for a real
+# Premier League match -- StarHub TV+/Singtel TV). A country with nothing to say about a given
+# competition just comes back empty, same as always -- no harm in asking broadly, and the tiered cache
+# below means asking is cheap after the first pass. Adding a brand-new competition below needs zero
+# country research now; it just inherits this list, and gets wider automatically if this list ever
+# does. A 'countries' key on an individual league entry still overrides this, for the rare case a
+# competition genuinely has nothing to do with most of these (kept to NHL/MLB/NASCAR below, where it
+# would just waste the call budget on markets with no realistic chance of coverage).
+DEFAULT_COUNTRIES = [
+    ('UK', 'United_Kingdom'), ('IE', 'Ireland'), ('US', 'United_States'), ('CA', 'Canada'),
+    ('AU', 'Australia'), ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('IN', 'India'),
+    ('MY', 'Malaysia'), ('SG', 'Singapore'), ('DE', 'Germany'), ('AT', 'Austria'), ('CH', 'Switzerland'),
+    ('FR', 'France'), ('IT', 'Italy'), ('NL', 'Netherlands'), ('PT', 'Portugal'), ('BE', 'Belgium'),
+    ('GR', 'Greece'), ('TR', 'Turkey'), ('BR', 'Brazil'), ('AR', 'Argentina'),
+]
+
 LEAGUES = [
-    # Widened 2026-11-01: this was only ever asking TheSportsDB about 3 countries, UK/US/AU, while the
-    # TV app's own PL_CH table (already researched and shipped) has real broadcasters in 9 -- Ireland,
-    # Canada, New Zealand, South Africa, Malaysia and India were simply never asked about, not missing
-    # from TheSportsDB. Confirmed real case: a live fixture's guide-v2 entry had exactly the 4 UK/US
-    # broadcasters and nothing else, while Sky Sport 8 (New Zealand) was independently verified (the
-    # broadcaster's own listings page) to be showing the same match. Reusing PL_CH's own country list
-    # here rather than guessing a new one. Singapore added the same day -- independently verified
-    # (StarHub TV+/Singtel TV cross-carriage) for the same real match, and not even in PL_CH itself, a
-    # genuine gap in that table too, not just here.
-    {'comp': 'Premier League', 'fixtures': 'football-data', 'fd_comp': 'PL', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('IE', 'Ireland'),
-                   ('CA', 'Canada'), ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('MY', 'Malaysia'), ('IN', 'India'),
-                   ('SG', 'Singapore')]},
+    {'comp': 'Premier League', 'fixtures': 'football-data', 'fd_comp': 'PL', 'tsdb_sport': 'Soccer'},
 
     # English domestic cups: not on football-data.org's free plan and previously left out of this list
     # entirely, so the app never had fixture or TV data for them at all (confirmed missing, not just
     # unmatched -- a real Fleetwood Town vs Arsenal EFL Cup tie, live-checked 2026-10-27, had a genuine
     # TheSportsDB TV listing, 'BeIn Sports 3 Australia', that this app simply never fetched). TheSportsDB
     # ids confirmed by hand the same day: FA Cup 4482, EFL Cup (Carabao Cup) 4570.
-    {'comp': 'FA Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4482', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
-    {'comp': 'League Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4570', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
+    {'comp': 'FA Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4482', 'tsdb_sport': 'Soccer'},
+    {'comp': 'League Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4570', 'tsdb_sport': 'Soccer'},
 
     # Same gap, bigger: Champions League and Europa League were never in this list either -- same root
     # cause as the English cups above (never added, not a deliberate exclusion; the app's own COMPS list
@@ -76,71 +82,41 @@ LEAGUES = [
     # competition ids together) but is still not the same as a confirmed-by-hand check. If either comes
     # back with 0 fixtures across several real runs, the id is wrong -- check it against the real key
     # before assuming the competition itself has a genuine data gap.
-    # Widened 2026-11-01, same reason as Premier League above: countries added here match the TV app's
-    # own CL_CH/EL_CH tables (Canada and New Zealand DAZN, South Africa SuperSport, India Sony LIV/beIN),
-    # not newly guessed.
-    {'comp': 'Champions League', 'fixtures': 'tsdb', 'tsdb_league_id': '4480', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
-                   ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('IN', 'India')]},
-    {'comp': 'Europa League', 'fixtures': 'tsdb', 'tsdb_league_id': '4481', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
-                   ('NZ', 'New_Zealand'), ('ZA', 'South_Africa')]},
-    {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball',
-     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
+    {'comp': 'Champions League', 'fixtures': 'tsdb', 'tsdb_league_id': '4480', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Europa League', 'fixtures': 'tsdb', 'tsdb_league_id': '4481', 'tsdb_sport': 'Soccer'},
+    {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball'},
+    # Kept narrow on purpose, unlike everything else above/below: realistically nowhere outside North
+    # America/the UK broadcasts NHL or MLB, so the full default list would just be wasted call budget.
     {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
      'countries': [('US', 'United_States'), ('CA', 'Canada')]},
     {'comp': 'MLB', 'fixtures': 'tsdb', 'tsdb_league_id': '4424', 'tsdb_sport': 'Baseball',
      'countries': [('US', 'United_States')]},
-    {'comp': 'NFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4391', 'tsdb_sport': 'American Football',
-     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+    {'comp': 'NFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4391', 'tsdb_sport': 'American Football'},
 
     # European football: football-data.org's free plan covers these 6 (confirmed via this key's own
     # /v4/competitions listing on 2026-10-26) -- same source as Premier League, more detailed status
     # than TheSportsDB's generic strStatus. The rest aren't on that plan, so fixtures come from
     # TheSportsDB itself instead, same as NBA/NHL/MLB/NFL above.
-    # Widened 2026-11-01, same reason as above -- countries added match each league's own curated table
-    # in the TV app (LL_CH/BL_CH/L1_CH/SA_CH), not newly guessed.
-    {'comp': 'La Liga', 'fixtures': 'football-data', 'fd_comp': 'PD', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'), ('ZA', 'South_Africa')]},
-    {'comp': 'Bundesliga', 'fixtures': 'football-data', 'fd_comp': 'BL1', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('DE', 'Germany'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada')]},
-    {'comp': 'Ligue 1', 'fixtures': 'football-data', 'fd_comp': 'FL1', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('FR', 'France'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada'), ('ZA', 'South_Africa')]},
-    {'comp': 'Serie A', 'fixtures': 'football-data', 'fd_comp': 'SA', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('IT', 'Italy'), ('AU', 'Australia'), ('US', 'United_States'), ('CA', 'Canada'), ('IN', 'India'), ('MY', 'Malaysia'), ('ZA', 'South_Africa')]},
-    {'comp': 'Eredivisie', 'fixtures': 'football-data', 'fd_comp': 'DED', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('NL', 'Netherlands')]},
-    {'comp': 'Primeira Liga', 'fixtures': 'football-data', 'fd_comp': 'PPL', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('PT', 'Portugal')]},
+    {'comp': 'La Liga', 'fixtures': 'football-data', 'fd_comp': 'PD', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Bundesliga', 'fixtures': 'football-data', 'fd_comp': 'BL1', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Ligue 1', 'fixtures': 'football-data', 'fd_comp': 'FL1', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Serie A', 'fixtures': 'football-data', 'fd_comp': 'SA', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Eredivisie', 'fixtures': 'football-data', 'fd_comp': 'DED', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Primeira Liga', 'fixtures': 'football-data', 'fd_comp': 'PPL', 'tsdb_sport': 'Soccer'},
     # Added 2026-10-31: confirmed via a live /v4/competitions call against the owner's own key that
     # these 5, plus the 6 above, are all on the free football-data.org plan right now (13 total).
-    # 'countries' below are a best-effort guess at where each is actually broadcast/searched for, NOT
-    # independently confirmed the way the others above were -- flag to the owner to adjust if a region
-    # is missing or wrong.
-    {'comp': 'Championship', 'fixtures': 'football-data', 'fd_comp': 'ELC', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom')]},
-    {'comp': 'Brazilian Serie A', 'fixtures': 'football-data', 'fd_comp': 'BSA', 'tsdb_sport': 'Soccer',
-     'countries': [('BR', 'Brazil'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Copa Libertadores', 'fixtures': 'football-data', 'fd_comp': 'CLI', 'tsdb_sport': 'Soccer',
-     'countries': [('BR', 'Brazil'), ('AR', 'Argentina'), ('UK', 'United_Kingdom')]},
-    {'comp': 'European Championship', 'fixtures': 'football-data', 'fd_comp': 'EC', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
-    {'comp': 'World Cup', 'fixtures': 'football-data', 'fd_comp': 'WC', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
-    {'comp': 'Belgian Pro League', 'fixtures': 'tsdb', 'tsdb_league_id': '4338', 'tsdb_sport': 'Soccer',
-     'countries': [('BE', 'Belgium'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Scottish Premiership', 'fixtures': 'tsdb', 'tsdb_league_id': '4330', 'tsdb_sport': 'Soccer',
-     'countries': [('UK', 'United_Kingdom')]},
-    {'comp': 'League of Ireland', 'fixtures': 'tsdb', 'tsdb_league_id': '4643', 'tsdb_sport': 'Soccer',
-     'countries': [('IE', 'Ireland'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Austrian Bundesliga', 'fixtures': 'tsdb', 'tsdb_league_id': '4621', 'tsdb_sport': 'Soccer',
-     'countries': [('AT', 'Austria'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Greek Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4336', 'tsdb_sport': 'Soccer',
-     'countries': [('GR', 'Greece'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Turkish Super Lig', 'fixtures': 'tsdb', 'tsdb_league_id': '4339', 'tsdb_sport': 'Soccer',
-     'countries': [('TR', 'Turkey'), ('UK', 'United_Kingdom')]},
-    {'comp': 'Swiss Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4675', 'tsdb_sport': 'Soccer',
-     'countries': [('CH', 'Switzerland'), ('UK', 'United_Kingdom')]},
+    {'comp': 'Championship', 'fixtures': 'football-data', 'fd_comp': 'ELC', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Brazilian Serie A', 'fixtures': 'football-data', 'fd_comp': 'BSA', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Copa Libertadores', 'fixtures': 'football-data', 'fd_comp': 'CLI', 'tsdb_sport': 'Soccer'},
+    {'comp': 'European Championship', 'fixtures': 'football-data', 'fd_comp': 'EC', 'tsdb_sport': 'Soccer'},
+    {'comp': 'World Cup', 'fixtures': 'football-data', 'fd_comp': 'WC', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Belgian Pro League', 'fixtures': 'tsdb', 'tsdb_league_id': '4338', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Scottish Premiership', 'fixtures': 'tsdb', 'tsdb_league_id': '4330', 'tsdb_sport': 'Soccer'},
+    {'comp': 'League of Ireland', 'fixtures': 'tsdb', 'tsdb_league_id': '4643', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Austrian Bundesliga', 'fixtures': 'tsdb', 'tsdb_league_id': '4621', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Greek Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4336', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Turkish Super Lig', 'fixtures': 'tsdb', 'tsdb_league_id': '4339', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Swiss Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4675', 'tsdb_sport': 'Soccer'},
 
     # A-League, AFL, NRL: all three already exist as choosable comps/sport-selector entries in the app
     # (COMPS, SPORT_GROUPS) but were never in this list, same gap as FA Cup/League Cup/Champions League/
@@ -148,12 +124,9 @@ LEAGUES = [
     # owner's own premium key -- the public test key only returns a crippled 5-league demo subset, no
     # use for this). AFL and NRL are both single, unambiguous leagues; no "which competition" judgement
     # call involved the way Rugby/Cricket below would need.
-    {'comp': 'A-League', 'fixtures': 'tsdb', 'tsdb_league_id': '4356', 'tsdb_sport': 'Soccer',
-     'countries': [('AU', 'Australia'), ('UK', 'United_Kingdom')]},
-    {'comp': 'AFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4456', 'tsdb_sport': 'Australian Football',
-     'countries': [('AU', 'Australia')]},
-    {'comp': 'NRL', 'fixtures': 'tsdb', 'tsdb_league_id': '4416', 'tsdb_sport': 'Rugby',
-     'countries': [('AU', 'Australia'), ('UK', 'United_Kingdom')]},
+    {'comp': 'A-League', 'fixtures': 'tsdb', 'tsdb_league_id': '4356', 'tsdb_sport': 'Soccer'},
+    {'comp': 'AFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4456', 'tsdb_sport': 'Australian Football'},
+    {'comp': 'NRL', 'fixtures': 'tsdb', 'tsdb_league_id': '4416', 'tsdb_sport': 'Rugby'},
     # Rugby and Cricket are NOT added here on purpose: both are a single generic comp in the app
     # (COMPS/SPORT_GROUPS just has one "Rugby" and one "Cricket", no finer split), but TheSportsDB has
     # dozens of real leagues under each -- Six Nations, United Rugby Championship, Rugby Championship,
@@ -165,21 +138,8 @@ LEAGUES = [
     # Motorsport. No World Superbike (WSBK) entry exists in TheSportsDB's catalog (checked by hand,
     # 2026-10-26) -- only domestic "British Superbike Championship", a different, smaller series, so
     # it's deliberately left out rather than silently substituted for what was actually asked for.
-    # Widened 2026-11-01: real case checked -- guide-v2 had exactly 2 broadcasters (Sky Sports F1 UK,
-    # Apple TV+ US) for a live race because those were the only 3 countries ever asked about (AU came
-    # back with nothing). Unlike the football leagues above, F1 had no existing curated table in the app
-    # to reuse, so these were looked up fresh (two separate real web searches, 2026-11-01): Canada --
-    # TSN/RDS, every race including practice/qualifying; Ireland -- Sky UK's feed; New Zealand -- Sky
-    # Sport (the same group already confirmed showing Premier League); South Africa -- SuperSport;
-    # Malaysia and Singapore -- beIN Sports, part of a confirmed 10-territory Asian F1 deal through 2030.
-    # Stopped at these 6 additions (9 total) rather than padding further -- these are the ones an actual
-    # source named; adding more without one would be exactly the guessed-broadcaster-table problem this
-    # project has been trying to get away from.
-    {'comp': 'Formula 1', 'fixtures': 'tsdb', 'tsdb_league_id': '4370', 'tsdb_sport': 'Motorsport',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia'), ('CA', 'Canada'),
-                   ('IE', 'Ireland'), ('NZ', 'New_Zealand'), ('ZA', 'South_Africa'), ('MY', 'Malaysia'), ('SG', 'Singapore')]},
-    {'comp': 'MotoGP', 'fixtures': 'tsdb', 'tsdb_league_id': '4407', 'tsdb_sport': 'Motorsport',
-     'countries': [('UK', 'United_Kingdom'), ('AU', 'Australia')]},
+    {'comp': 'Formula 1', 'fixtures': 'tsdb', 'tsdb_league_id': '4370', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'MotoGP', 'fixtures': 'tsdb', 'tsdb_league_id': '4407', 'tsdb_sport': 'Motorsport'},
     {'comp': 'IndyCar', 'fixtures': 'tsdb', 'tsdb_league_id': '4373', 'tsdb_sport': 'Motorsport',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
     {'comp': 'NASCAR', 'fixtures': 'tsdb', 'tsdb_league_id': '4393', 'tsdb_sport': 'Motorsport',
@@ -188,18 +148,21 @@ LEAGUES = [
     # Tennis, Golf, Fighting: individual/card sports -- TheSportsDB gives no strHomeTeam/strAwayTeam for
     # these (confirmed by hand), everything is in strEvent instead ("Alcaraz vs Lehecka", "UFC Fight
     # Night 292 Moicano vs Nolan"). fetch_tsdb_fixtures already handles that (see its own comment).
-    {'comp': 'ATP Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4464', 'tsdb_sport': 'Tennis',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
-    {'comp': 'WTA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4517', 'tsdb_sport': 'Tennis',
-     'countries': [('UK', 'United_Kingdom'), ('US', 'United_States'), ('AU', 'Australia')]},
-    {'comp': 'PGA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4425', 'tsdb_sport': 'Golf',
-     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
-    {'comp': 'European Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4426', 'tsdb_sport': 'Golf',
-     'countries': [('UK', 'United_Kingdom')]},
-    {'comp': 'UFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4443', 'tsdb_sport': 'Fighting',
-     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom'), ('AU', 'Australia')]},
-    {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting',
-     'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
+    # 2026-11-01: widening the country list here will NOT meaningfully raise these sports' channel
+    # counts -- checked directly against the live resolved output the same day, TheSportsDB's own TV-
+    # listing data is close to empty for almost every tennis/golf event and most motorsport sessions
+    # outside the live moment itself (0 channels on all 15 ATP and all 14 WTA matches checked, 0 on 6/7
+    # European Tour events, 19/21 MotoGP sessions), the same structural gap an earlier session already
+    # flagged. Asking more countries about data that was never recorded in the first place just returns
+    # more empty lists; this is a genuine source limitation, not something to keep tuning the query side
+    # for. A real fix for these specific sports needs a different TV-listing source, not a wider country
+    # list -- worth its own dedicated piece of work, not a quick patch here.
+    {'comp': 'ATP Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4464', 'tsdb_sport': 'Tennis'},
+    {'comp': 'WTA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4517', 'tsdb_sport': 'Tennis'},
+    {'comp': 'PGA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4425', 'tsdb_sport': 'Golf'},
+    {'comp': 'European Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4426', 'tsdb_sport': 'Golf'},
+    {'comp': 'UFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4443', 'tsdb_sport': 'Fighting'},
+    {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting'},
 ]
 
 
@@ -480,7 +443,7 @@ def resolve_league(league, cache):
                   | {(datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc) + timedelta(days=d)).strftime('%Y-%m-%d')
                      for f in fixtures for d in (-1, 0, 1)})
 
-    for cc, param in league['countries']:
+    for cc, param in league.get('countries') or DEFAULT_COUNTRIES:
         for day in days:
             day_offset = (datetime.strptime(day, '%Y-%m-%d').date() - today).days
             cache_key = '%s|%s|%s' % (league['comp'], cc, day)
