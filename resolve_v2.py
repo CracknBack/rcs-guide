@@ -165,6 +165,61 @@ LEAGUES = [
     {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting'},
 ]
 
+# ESPN's public, unauthenticated Site v2 API (site.api.espn.com) -- confirmed by hand 2026-11-01 to
+# return clean JSON with no Cloudflare/WAF gate at all, unlike nascar.com itself (hard-blocked even on a
+# bare request with no spoofing attempted). It only ever reports US broadcasters -- checked both
+# 'broadcasts' and 'geoBroadcasts' on a real event, the latter carries a 'region' field but it was 'us'
+# every time, and came back empty for Eredivisie rather than naming a non-US region. So this only ever
+# strengthens the US side of channels[]; the AU/UK side below (RIGHTS_SEED) still has to come from
+# somewhere else. Used for exactly the comps this file's own module docstring already flagged as having
+# near-empty TheSportsDB TV data (PGA Tour, European Tour, NASCAR), plus Eredivisie, whose TV side is
+# dead the same way despite having real football-data.org fixtures already.
+ESPN_SOURCES = [
+    # 'tournament': one multi-day event live at a time (golf) -- the DEFAULT scoreboard call (no
+    # ?dates= at all) already returns the current/nearest tournament with its own startDate/endDate
+    # spanning every round, confirmed by hand against the real endpoint, so this needs exactly one call,
+    # not a day-by-day loop, and the match window is the whole tournament, not a single kickoff instant
+    # (a Thursday-only timestamp would miss the Friday/Saturday/Sunday rounds entirely).
+    {'comp': 'PGA Tour', 'espn_path': 'golf/pga', 'kind': 'tournament'},
+    {'comp': 'European Tour', 'espn_path': 'golf/eur', 'kind': 'tournament'},
+    # 'daily': one event a day, not a standing multi-day event (NASCAR is a single race) -- the default
+    # call only returns today's slate, and a dashed date RANGE (?dates=YYYYMMDD-YYYYMMDD) is REJECTED
+    # with a 400 on these scoreboards (confirmed by hand) -- the form that actually works is one plain
+    # ?dates=YYYYMMDD call per day, so this loops that instead.
+    {'comp': 'NASCAR', 'espn_path': 'racing/nascar-premier', 'kind': 'daily'},
+    # 'teams': Eredivisie already has real fixtures from football-data.org (see LEAGUES) -- this exists
+    # only to borrow ESPN's broadcasts[] for the US side, matched to one specific fixture by team name
+    # (same day loop as 'daily' above, just matched per-game instead of applied to the whole day).
+    {'comp': 'Eredivisie', 'espn_path': 'soccer/ned.1', 'kind': 'teams'},
+]
+# No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
+# exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
+# real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
+# MotoGP gets no ESPN entry and relies on RIGHTS_SEED below instead.
+
+# Standing regional rights deals, not per-match data -- independently verified 2026-11-01 (web search,
+# not guessed from general knowledge; see the session this was built from for sources: Fox Sports/Kayo
+# for AU motorsport and golf, Sky Sports Golf for UK golf, TrillerTV as Eredivisie's actual AU/UK/IE
+# rights holder 2025-2030 -- NOT the ESPN-NL channels an earlier draft of this guessed at, which would
+# almost never appear in an AU/UK/US-facing IPTV playlist anyway). Seeded into every fixture of these
+# comps because TheSportsDB's eventstv.php is confirmed structurally empty for them in these markets --
+# this file's own module docstring already flagged PGA/European Tour/MotoGP as "close to empty" TV
+# data, so there is no per-match "did eventstv.php actually fail this time" check to gate this on; the
+# gap is the competition itself, not any one fixture. Brand name only, deliberately no channel number
+# (e.g. "Fox Sports" not "Fox Sports 506") -- a numbered slot drifts whenever two of a provider's own
+# properties collide on a weekend (a real, named concern: NASCAR/MotoGP/golf overflowing onto a
+# neighbouring Fox Sports number during a clash), and tsdbGroups() on the client already has its own
+# brand-word fallback tier for exactly this -- a bare brand name still finds whatever number the user's
+# own provider actually gave it. confidence is 'likely', same as every other claim in this file: a
+# standing rights deal is strong evidence, not proof of what's actually airing in that slot this minute.
+RIGHTS_SEED = {
+    'NASCAR': [('Fox Sports', 'AU'), ('Kayo', 'AU')],
+    'MotoGP': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('TNT Sports', 'UK')],
+    'PGA Tour': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('Sky Sports Golf', 'UK'), ('Sky Sports Main Event', 'UK')],
+    'European Tour': [('Fox Sports', 'AU'), ('Kayo', 'AU'), ('Sky Sports Golf', 'UK')],
+    'Eredivisie': [('TrillerTV', 'AU'), ('TrillerTV', 'UK'), ('Premier Sports', 'UK')],
+}
+
 
 def fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers={**UA, **(headers or {})})
@@ -428,6 +483,141 @@ def classify_kind(listing_ts, kick_ts):
     return 'PREVIEW'
 
 
+def fetch_espn_json(url, max_retries=2):
+    for attempt in range(max_retries):
+        try:
+            return fetch_json(url)
+        except Exception:
+            if attempt < max_retries - 1:
+                time.sleep(2)
+                continue
+            raise
+
+
+def fetch_espn_cached(url, cache, cache_key, day_offset):
+    # Same tiered-cache shape as fetch_tsdb_tv_day (NEAR_MAX_AGE/FAR_MAX_AGE), carried forward between
+    # runs the same way -- no reason to hit ESPN fresh every 15-minute guide-v2 tick for a schedule that
+    # barely changes hour to hour. No sliding-window rate limiter here unlike TheSportsDB/football-data.org
+    # above -- those were built in response to REAL observed 429s (see their own comments); nothing here
+    # has ever actually 429'd, and this file's own principle is to pace against a real, confirmed limit,
+    # not an invented one.
+    now = time.time()
+    max_age = NEAR_MAX_AGE if day_offset in (0, 1) else FAR_MAX_AGE
+    entry = cache.get(cache_key)
+    if entry and now - entry.get('fetched_at', 0) < max_age:
+        return entry.get('data')
+    try:
+        j = fetch_espn_json(url)
+        cache[cache_key] = {'fetched_at': now, 'data': j}
+        return j
+    except Exception as e:
+        print('ESPN fetch failed for %s: %s' % (url, e), file=sys.stderr)
+        return entry.get('data') if entry else None
+
+
+def parse_espn_ts(s):
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+    except ValueError:
+        return None
+
+
+def espn_broadcast_names(competition):
+    names = []
+    for b in competition.get('broadcasts') or []:
+        names.extend(b.get('names') or [])
+    return names
+
+
+def espn_channel_row(name, kick_ts, now_iso):
+    return {'channel': name, 'country': 'US', 'kind': 'LIVE', 'inferred_kind': True,
+            'start': datetime.fromtimestamp(kick_ts, tz=timezone.utc).isoformat(),
+            'confidence': 'likely', 'source': 'espn', 'checked': now_iso}
+
+
+def espn_channels_tournament(src, fixtures, cache, now_iso):
+    url = 'https://site.api.espn.com/apis/site/v2/sports/%s/scoreboard' % src['espn_path']
+    j = fetch_espn_cached(url, cache, 'espn|%s|current' % src['comp'], 0)
+    if not j:
+        return
+    for ev in j.get('events') or []:
+        comp_obj = (ev.get('competitions') or [{}])[0]
+        names = espn_broadcast_names(comp_obj)
+        if not names:
+            continue
+        start = parse_espn_ts(comp_obj.get('startDate') or ev.get('date'))
+        if start is None:
+            continue
+        end = parse_espn_ts(comp_obj.get('endDate')) or (start + 4 * 864e2)
+        lo, hi = start - 12 * 3600, end + 12 * 3600
+        for f in fixtures:
+            if f['comp'] != src['comp'] or not (lo <= f['kick_ts'] <= hi):
+                continue
+            for name in names:
+                f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
+
+
+def espn_channels_daily(src, fixtures, cache, now_iso):
+    today = datetime.now(timezone.utc).date()
+    days = sorted({datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc).strftime('%Y%m%d')
+                   for f in fixtures if f['comp'] == src['comp']})
+    for day in days:
+        day_offset = (datetime.strptime(day, '%Y%m%d').date() - today).days
+        url = 'https://site.api.espn.com/apis/site/v2/sports/%s/scoreboard?dates=%s' % (src['espn_path'], day)
+        j = fetch_espn_cached(url, cache, 'espn|%s|%s' % (src['comp'], day), day_offset)
+        if not j:
+            continue
+        events = j.get('events') or []
+        if src['kind'] == 'teams':
+            for ev in events:
+                comp_obj = (ev.get('competitions') or [{}])[0]
+                names = espn_broadcast_names(comp_obj)
+                if not names:
+                    continue
+                teams = [c.get('team', {}).get('displayName') or c.get('team', {}).get('name')
+                         for c in (comp_obj.get('competitors') or [])]
+                teams = [t for t in teams if t]
+                if len(teams) < 2:
+                    continue
+                start = parse_espn_ts(comp_obj.get('date') or ev.get('date'))
+                if start is None:
+                    continue
+                for f in fixtures:
+                    if f['comp'] != src['comp'] or abs(f['kick_ts'] - start) > 6 * 3600:
+                        continue
+                    if not teams_match(f['home'], f['away'], teams[0] + ' ' + teams[1]):
+                        continue
+                    for name in names:
+                        f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
+        else:
+            # 'daily' individual event (NASCAR): exactly one race -- if ESPN somehow lists more than one
+            # for the same day, that's ambiguous and this skips it rather than guessing which one a
+            # given fixture is.
+            if len(events) != 1:
+                continue
+            comp_obj = (events[0].get('competitions') or [{}])[0]
+            names = espn_broadcast_names(comp_obj)
+            if not names:
+                continue
+            for f in fixtures:
+                if f['comp'] != src['comp']:
+                    continue
+                if datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc).strftime('%Y%m%d') != day:
+                    continue
+                for name in names:
+                    f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
+
+
+def seed_rights_table(league, fixtures, now_iso):
+    for channel, country in RIGHTS_SEED.get(league['comp']) or []:
+        for f in fixtures:
+            f['channels'].append({'channel': channel, 'country': country, 'kind': 'LIVE', 'inferred_kind': True,
+                                   'start': datetime.fromtimestamp(f['kick_ts'], tz=timezone.utc).isoformat(),
+                                   'confidence': 'likely', 'source': 'rights-table', 'checked': now_iso})
+
+
 def resolve_league(league, cache):
     fixtures = fetch_football_data_fixtures(league) if league['fixtures'] == 'football-data' else fetch_tsdb_fixtures(league, cache)
     if not fixtures:
@@ -466,6 +656,14 @@ def resolve_league(league, cache):
                         'start': datetime.fromtimestamp(listing_ts, tz=timezone.utc).isoformat(),
                         'confidence': 'likely', 'source': 'thesportsdb', 'checked': now_iso,
                     })
+
+    espn_src = next((s for s in ESPN_SOURCES if s['comp'] == league['comp']), None)
+    if espn_src:
+        if espn_src['kind'] == 'tournament':
+            espn_channels_tournament(espn_src, fixtures, cache, now_iso)
+        else:
+            espn_channels_daily(espn_src, fixtures, cache, now_iso)
+    seed_rights_table(league, fixtures, now_iso)
 
     for f in fixtures:
         del f['kick_ts']
