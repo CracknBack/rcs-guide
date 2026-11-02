@@ -206,12 +206,28 @@ ESPN_SOURCES = [
     # only to borrow ESPN's broadcasts[] for the US side, matched to one specific fixture by team name
     # (same day loop as 'daily' above, just matched per-game instead of applied to the whole day).
     {'comp': 'Eredivisie', 'espn_path': 'soccer/ned.1', 'kind': 'teams'},
+    # IndyCar and UFC added 2026-11-02, same 'daily' shape as NASCAR (one event a day, loop real
+    # TheSportsDB-sourced fixture days against ?dates=YYYYMMDD). Both confirmed live by hand: IndyCar's
+    # racing/irl scoreboard returns real broadcasts (FOX); mma/ufc returns real broadcasts (Paramount+,
+    # UFC's current US rights holder). Same US-only caveat as every other ESPN_SOURCES entry.
+    {'comp': 'IndyCar', 'espn_path': 'racing/irl', 'kind': 'daily'},
+    {'comp': 'UFC', 'espn_path': 'mma/ufc', 'kind': 'daily'},
 ]
 # No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
 # exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
 # real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
 # MotoGP gets its channels from XMLTV_SOURCES below instead (real per-fixture programme data covers
 # it -- AU1/UK1/CA2 all had genuine MotoGP race-weekend listings when checked by hand 2026-11-02).
+#
+# No Boxing entry, and none planned: checked by hand 2026-11-02, ESPN's site API doesn't carry boxing
+# at all -- /apis/site/v2/sports/boxing/scoreboard 404s, and the core API's own sport list rejects
+# "boxing" outright ({"error":{"message":"Invalid sport (boxing)."}}), unlike every other sport here
+# which at least resolves to a real (if sometimes wrong) league slug. XMLTV_SOURCES was checked too --
+# no DAZN/PPV/boxing-branded channel exists in any of the AU/UK/NZ/CA/US feeds. This isn't a parsing
+# gap, it's that boxing's real-world broadcast rights are split across PPV/DAZN/promoter-specific deals
+# with no single body or standing channel the way UFC/PGA/NASCAR have -- there is currently no free,
+# legitimate source for this one. Boxing still gets whatever TheSportsDB's eventstv.php happens to
+# carry (same as everything else), just nothing on top of it.
 
 # Real per-country TV guide XMLTV feeds, checked by hand 2026-11-02 after the raw Foxtel/Sky backend
 # APIs that power them turned out dead/walled (tvguide.foxsports.com.au returns HTTP 200 with a fully
@@ -241,8 +257,11 @@ XMLTV_SOURCES = [
      'channel_re': re.compile(r'tsn|sportsnet|fox\s*sports', re.I)},
     # epgshare01's "US_SPORTS1" is NOT this (checked by hand -- it's Minor League Baseball team
     # channels, zero real network content); "US2" is the real one with ESPN/FOX/CBS Sports/etc.
+    # "tennis" added 2026-11-02: Tennis.Channel.HD.us2 is a real channel in this feed with real ATP/
+    # WTA programme text ("Center Court", sub-title naming the actual tour/city) -- just never matched
+    # by the old regex, nothing to do with the sport lacking coverage here.
     {'country': 'US', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz',
-     'channel_re': re.compile(r'espn|fox|cbs\s*sports|nbc|usa|golf', re.I)},
+     'channel_re': re.compile(r'espn|fox|cbs\s*sports|nbc|usa|golf|tennis', re.I)},
     # CA1 (the obvious sibling to CA2) 404s -- removed, not guessed at; CA2 alone already covers
     # TSN/Sportsnet/Fox Sports Racing, the channels that actually matter here.
 ]
@@ -336,10 +355,16 @@ def norm_text(s):
 # Known on-air phrasings that don't literally contain the comp name as a substring -- without these,
 # requiring the sport identifier below would silently never match correctly-worded real listings
 # (confirmed real cases: EPGs commonly abbreviate "Formula 1" to "F1"; the European Tour has been
-# branded "DP World Tour" on air for years; neither phrase contains the comp string at all).
+# branded "DP World Tour" on air for years; neither phrase contains the comp string at all. Same
+# pattern confirmed 2026-11-02 for tennis: real listings on SkySp.Tennis.HD.uk/Tennis.Channel.HD.us2
+# say "WTA Tokyo Final" or "Vienna-ATP" -- the bare tour abbreviation, never the literal "ATP Tour"/
+# "WTA Tour" phrase -- so without these aliases xmltv_text_matches silently failed every real tennis
+# listing despite the right channels already being in scope).
 COMP_TEXT_ALIASES = {
     'Formula 1': ['f1'],
     'European Tour': ['dp world tour'],
+    'ATP Tour': ['atp'],
+    'WTA Tour': ['wta'],
 }
 
 
