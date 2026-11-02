@@ -415,18 +415,31 @@ def tsdb_rate_limit_wait():
     _tsdb_call_times.append(time.time())
 
 
+# TheSportsDB's published free/test keys -- only ever used for local debugging; the real CI run
+# always gets the premium key from secrets.TSDB_KEY, so this never affects production. The free
+# key's own rate limiter hands back a real Retry-After of 120s (confirmed by hand 2026-11-02 -- that
+# number is the server's, not a constant this file chose). Honouring that during a quick local smoke
+# test just means sitting through minutes of sleep for data the free key was never going to give
+# cleanly anyway (it's throttled far harder than the real plan). Both callers of this function already
+# catch and degrade gracefully on failure (empty fixtures/listings), so failing fast here is safe.
+TSDB_FREE_KEYS = {'3', '123'}
+
+
 def fetch_tsdb_json(url, max_retries=4):
-    for attempt in range(max_retries):
+    is_free_key = TSDB_KEY in TSDB_FREE_KEYS
+    for attempt in range(1 if is_free_key else max_retries):
         tsdb_rate_limit_wait()
         try:
             return fetch_json(url)
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < max_retries - 1:
+            if e.code == 429 and not is_free_key and attempt < max_retries - 1:
                 retry_after = e.headers.get('Retry-After') if e.headers else None
                 wait = float(retry_after) if retry_after and retry_after.isdigit() else 65
                 print('429 from TheSportsDB -- waiting %.0fs before retrying (attempt %d/%d)' % (wait, attempt + 1, max_retries), file=sys.stderr)
                 time.sleep(wait)
                 continue
+            if e.code == 429 and is_free_key:
+                print('429 from TheSportsDB (free test key -- not retrying, expected locally)', file=sys.stderr)
             raise
 
 
@@ -630,7 +643,12 @@ def save_cache(path, cache):
     # unbounded growth guard: a day that's now in the past never gets looked up again, so drop entries
     # older than a day past their own cache time rather than letting this file grow forever.
     cutoff = time.time() - 2 * 864e2
-    pruned = {k: v for k, v in cache.items() if v.get('fetched_at', 0) > cutoff}
+    # isinstance guard: a bare non-dict value (e.g. a raw float) in cache crashed this with
+    # AttributeError on the very first real run after order_by_staleness started stamping
+    # last_resolved|<comp> (confirmed 2026-11-02, fixed by giving that entry the same {'fetched_at':
+    # ...} shape as everything else) -- kept here too so the SAME mistake in a future addition to
+    # this dict fails to prune that one entry, not the whole run.
+    pruned = {k: v for k, v in cache.items() if isinstance(v, dict) and v.get('fetched_at', 0) > cutoff}
     with open(path, 'w', encoding='utf-8') as fh:
         json.dump(pruned, fh)
 
@@ -881,8 +899,11 @@ def order_by_staleness(leagues, cache):
     whatever now sits at the back.) A competition with no cache entry yet (brand new, or the cache was
     just reset) sorts first of all, so it gets its first real run immediately rather than waiting
     behind everything else. Stamped in resolve() below via the same cache dict the checkpoint already
-    persists, so this needs no separate storage."""
-    return sorted(leagues, key=lambda league: cache.get('last_resolved|' + league['comp'], 0))
+    persists, so this needs no separate storage. Stored as {'fetched_at': ...}, same shape as every
+    other cache entry -- save_cache()'s own pruning assumes every value is dict-shaped and calls
+    v.get('fetched_at', 0) on all of them; a bare float here crashed that with AttributeError on the
+    very first real run (confirmed 2026-11-02)."""
+    return sorted(leagues, key=lambda league: cache.get('last_resolved|' + league['comp'], {}).get('fetched_at', 0))
 
 
 def resolve(cache, only=None, checkpoint=None, deadline=None):
@@ -927,8 +948,9 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
             resolved.append(league['comp'])
             # Stamped regardless of whether got is empty -- fairness is about "was this league
             # attempted this run" (it already spent its share of the TheSportsDB/ESPN budget either
-            # way), not "did it happen to find anything".
-            cache['last_resolved|' + league['comp']] = time.time()
+            # way), not "did it happen to find anything". Dict-shaped, not a bare float -- see
+            # order_by_staleness's own comment on why that matters to save_cache().
+            cache['last_resolved|' + league['comp']] = {'fetched_at': time.time()}
             if checkpoint:
                 checkpoint()
     finally:
