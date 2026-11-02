@@ -810,7 +810,15 @@ def resolve_league(league, cache, xmltv=None):
     for cc, param in league.get('countries') or DEFAULT_COUNTRIES:
         for day in days:
             day_offset = (datetime.strptime(day, '%Y-%m-%d').date() - today).days
-            cache_key = '%s|%s|%s' % (league['comp'], cc, day)
+            # Keyed by SPORT, not comp -- eventstv.php's own URL (see fetch_tsdb_tv_day) is built only
+            # from (day, country, sport); it never includes which competition is asking. A comp-keyed
+            # cache meant every one of the 24 competitions sharing tsdb_sport='Soccer' independently
+            # refetched the identical country x day grid, 24 times over, for a call that was already
+            # byte-for-byte identical across all of them. Confirmed by hand 2026-11-02: the URL build
+            # genuinely has no comp in it at all. Pure dedup, zero change to what gets matched -- the
+            # listings pool content is the same regardless of which comp's run happens to fetch it
+            # first; only the FETCH is shared now, not the per-comp matching against it below.
+            cache_key = '%s|%s|%s' % (league['tsdb_sport'], cc, day)
             for t in fetch_tsdb_tv_day(day, param, league['tsdb_sport'], cache, cache_key, day_offset):
                 listing_ts = parse_ts(t.get('strTimeStamp'), t.get('dateEvent'), t.get('strTime'))
                 if listing_ts is None:
