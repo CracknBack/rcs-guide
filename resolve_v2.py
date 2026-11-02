@@ -333,46 +333,56 @@ def norm_text(s):
     return s.strip()
 
 
+# Known on-air phrasings that don't literally contain the comp name as a substring -- without these,
+# requiring the sport identifier below would silently never match correctly-worded real listings
+# (confirmed real cases: EPGs commonly abbreviate "Formula 1" to "F1"; the European Tour has been
+# branded "DP World Tour" on air for years; neither phrase contains the comp string at all).
+COMP_TEXT_ALIASES = {
+    'Formula 1': ['f1'],
+    'European Tour': ['dp world tour'],
+}
+
+
 def xmltv_text_matches(text, fixture):
-    """The same matching RULE as the TV app's own eventMatchesFixture (team-pair match for team sports,
-    else competition name or distinctive event-label words, generic filler excluded) -- same rule,
-    independently applied here because this file has no access to the client's JS, not a different or
-    looser standard. Reuses teams_match/norm_team already in this file for the team-sport case."""
+    """Team sports: the existing team-pair match (unaffected by the bug this fixes). Non-team sports
+    MUST match the sport/series identifier itself (the comp name, or a known on-air alias above) -- a
+    bare distinctive LABEL word is no longer enough on its own. Confirmed real false positive this
+    was built to fix: "Sky Sports Golf" matched a MotoGP fixture purely because its listing happened
+    to mention "Malaysia" (the race's location that week), even though Sky Sports doesn't hold
+    MotoGP's UK rights at all -- TNT Sports does. A city/country name isn't sport-specific; two
+    completely unrelated sports' events can share one in the same week. The sport's own name is the
+    one thing in the label that's actually diagnostic."""
     if fixture.get('home') and fixture.get('away'):
         return teams_match(fixture['home'], fixture['away'], text)
     t = ' ' + norm_text(text) + ' '
-    comp = norm_text(fixture.get('comp') or '')
-    if comp and (' ' + comp + ' ') in t:
-        return True
-    label = norm_text(fixture.get('label') or '')
-    words = [w for w in label.split() if len(w) > 3 and w not in EVENT_LABEL_STOP]
-    return any((' ' + w + ' ') in t for w in words)
-
-
-# Same generic-filler-word list as the TV app's EVENT_LABEL_STOP (eventMatchesFixture) -- kept as its
-# own copy, not shared code, for the same reason xmltv_text_matches above is its own function: this
-# file and index.html don't share a runtime, so the one shared thing that actually matters is the RULE,
-# applied identically on both sides, not a literal shared constant.
-EVENT_LABEL_STOP = {'grand', 'prix', 'open', 'tour', 'cup', 'championship', 'classic', 'invitational',
-                     'masters', 'series', 'race', 'round', 'stage', 'world', 'international', 'national',
-                     'event', 'fight', 'night', 'tournament'}
+    comp = fixture.get('comp') or ''
+    names = [comp] + COMP_TEXT_ALIASES.get(comp, [])
+    return any(n and (' ' + norm_text(n) + ' ') in t for n in names)
 
 
 def xmltv_channels_for_fixture(fixture, xmltv, now_iso):
-    out = []
+    # Deduped by (normalised channel name, country), keeping the earliest match -- a single channel's
+    # multiple programme blocks around a fixture (e.g. quali and the race both falling inside this
+    # function's own time window) used to each produce their own channel row, so one real channel
+    # could show up 5-7 times for one event. The earliest start is the one closest to kickoff, same
+    # "keep whichever's nearer" reasoning the TV app's own v2Events() already uses client-side.
+    best = {}
     for cc, idx in xmltv.items():
         for p in idx['programmes']:
             if p['stop'] < fixture['kick_ts'] - 3 * 3600 or p['start'] > fixture['kick_ts'] + 6 * 3600:
                 continue
             if not xmltv_text_matches(p['text'], fixture):
                 continue
-            out.append({
-                'channel': idx['names'].get(p['channel'], p['channel']), 'country': cc,
-                'kind': classify_kind(p['start'], fixture['kick_ts']), 'inferred_kind': True,
-                'start': datetime.fromtimestamp(p['start'], tz=timezone.utc).isoformat(),
-                'confidence': 'likely', 'source': 'xmltv', 'checked': now_iso,
-            })
-    return out
+            name = idx['names'].get(p['channel'], p['channel'])
+            key = (norm_text(name), cc)
+            if key not in best or p['start'] < best[key]['start']:
+                best[key] = {'name': name, 'country': cc, 'start': p['start']}
+    return [{
+        'channel': v['name'], 'country': v['country'],
+        'kind': classify_kind(v['start'], fixture['kick_ts']), 'inferred_kind': True,
+        'start': datetime.fromtimestamp(v['start'], tz=timezone.utc).isoformat(),
+        'confidence': 'likely', 'source': 'xmltv', 'checked': now_iso,
+    } for v in best.values()]
 
 
 def fetch_json(url, headers=None):
@@ -861,6 +871,20 @@ def leagues_matching(only):
     return out
 
 
+def order_by_staleness(leagues, cache):
+    """Rotates by staleness instead of a fixed order: whichever competition was least recently
+    resolved goes first, so a deadline/rate-limit cutoff never permanently starves whatever happens to
+    sit near the back of the list -- the thing that got cut off THIS run has the oldest timestamp and
+    sorts first NEXT run, so every competition gets a turn across consecutive runs. (A 2026-11-02 fix
+    attempt hardcoded NASCAR/MotoGP/PGA Tour/European Tour/Eredivisie at the front of LEAGUES instead
+    -- reverted before it even shipped: that would only have pushed the exact same starvation onto
+    whatever now sits at the back.) A competition with no cache entry yet (brand new, or the cache was
+    just reset) sorts first of all, so it gets its first real run immediately rather than waiting
+    behind everything else. Stamped in resolve() below via the same cache dict the checkpoint already
+    persists, so this needs no separate storage."""
+    return sorted(leagues, key=lambda league: cache.get('last_resolved|' + league['comp'], 0))
+
+
 def resolve(cache, only=None, checkpoint=None, deadline=None):
     """checkpoint: called after every league resolves, win or lose, so a run that DOES finish (see
     deadline below) keeps every API call it already paid TheSportsDB's rate limit for even if an
@@ -882,7 +906,7 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
     the primary mechanism."""
     now_iso = datetime.now(timezone.utc).isoformat()
     events, resolved = [], []
-    leagues = leagues_matching(only)
+    leagues = order_by_staleness(leagues_matching(only), cache)
     # Loaded once here, not inside resolve_league() -- these are multi-MB downloads; fetching them
     # once per resolve() run and sharing the result across every league is the whole point (and why
     # fetch_xmltv_programmes' own cache keys by country, not by league).
@@ -901,6 +925,10 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
             print('%s: %d fixtures resolved' % (league['comp'], len(got)), file=sys.stderr)
             events.extend(got)
             resolved.append(league['comp'])
+            # Stamped regardless of whether got is empty -- fairness is about "was this league
+            # attempted this run" (it already spent its share of the TheSportsDB/ESPN budget either
+            # way), not "did it happen to find anything".
+            cache['last_resolved|' + league['comp']] = time.time()
             if checkpoint:
                 checkpoint()
     finally:
