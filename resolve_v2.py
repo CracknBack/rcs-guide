@@ -31,7 +31,8 @@ the moment it's actually watched -- that second check only the app itself can do
 provider's own guide, which never leaves the device. This file is an input to that check, not a
 replacement for it.
 """
-import json, os, re, signal, sys, time, urllib.request, urllib.parse, urllib.error
+import gzip, io, json, os, re, signal, sys, time, urllib.request, urllib.parse, urllib.error
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 FD_KEY = os.environ.get('FD_KEY', '').strip()
@@ -209,8 +210,169 @@ ESPN_SOURCES = [
 # No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
 # exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
 # real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
-# MotoGP gets no server-side channel source at all now -- see the comment above ESPN_SOURCES for why
-# (the standing-rights seed that used to fill this in was removed 2026-11-02).
+# MotoGP gets its channels from XMLTV_SOURCES below instead (real per-fixture programme data covers
+# it -- AU1/UK1/CA2 all had genuine MotoGP race-weekend listings when checked by hand 2026-11-02).
+
+# Real per-country TV guide XMLTV feeds, checked by hand 2026-11-02 after the raw Foxtel/Sky backend
+# APIs that power them turned out dead/walled (tvguide.foxsports.com.au returns HTTP 200 with a fully
+# empty result; epgsky.com 403s without private app auth) -- these are PRE-COMPILED, publicly hosted
+# outputs of that same kind of scraping, already run and republished daily by epgshare01.online, a
+# well-known community aggregator used widely in IPTV/Jellyfin/Plex setups. Verified by hand, not
+# assumed: downloaded all five, decompressed them, and grep'd for real programme text -- genuine
+# MotoGP/NASCAR/PGA Tour/European Tour hits in the dozens to low hundreds per file, e.g. a real
+# "SkySp.Golf.uk" entry titled "PGA Tour Champions Highlights" with a real date and description, not
+# placeholder junk. Eredivisie is absent from AU/UK/NZ/US (0 hits) but present in CA2 (20 hits) --
+# genuinely thin international coverage, not a parsing gap; TrillerTV (the actual rights holder,
+# streaming-only, no linear channel) is still the better answer for that one specifically.
+#
+# channel_re matches candidate channel ids/display-names up front during parsing (see
+# fetch_xmltv_programmes) so the multi-hundred-thousand-line files below don't have to keep every
+# channel's programmes in memory -- only the sports-adjacent slice. Kept deliberately generous (e.g.
+# bare "fox" on the US feed also catches Fox News/Fox Business) since over-matching a channel here only
+# costs a little parse time; under-matching one silently drops a real channel, the actual risk.
+XMLTV_SOURCES = [
+    {'country': 'AU', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz',
+     'channel_re': re.compile(r'fox\s*sports|fox8|espn|bein|kayo', re.I)},
+    {'country': 'UK', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz',
+     'channel_re': re.compile(r'sky\s*sp|tnt\s*sports?|premier\s*sports|bein', re.I)},
+    {'country': 'NZ', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_NZ1.xml.gz',
+     'channel_re': re.compile(r'sky\s*sport|espn', re.I)},
+    {'country': 'CA', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_CA2.xml.gz',
+     'channel_re': re.compile(r'tsn|sportsnet|fox\s*sports', re.I)},
+    # epgshare01's "US_SPORTS1" is NOT this (checked by hand -- it's Minor League Baseball team
+    # channels, zero real network content); "US2" is the real one with ESPN/FOX/CBS Sports/etc.
+    {'country': 'US', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz',
+     'channel_re': re.compile(r'espn|fox|cbs\s*sports|nbc|usa|golf', re.I)},
+    # CA1 (the obvious sibling to CA2) 404s -- removed, not guessed at; CA2 alone already covers
+    # TSN/Sportsnet/Fox Sports Racing, the channels that actually matter here.
+]
+
+XMLTV_MAX_AGE = 2 * 3600   # these are daily community rippers, not a live feed -- no reason to
+                           # redownload and reparse several MB of XML every 15-minute guide-v2 tick.
+
+
+def parse_xmltv_ts(raw):
+    """XMLTV's "YYYYMMDDHHMMSS +HHMM" format -- confirmed by hand these feeds use real, VARIED offsets
+    (+0800, +0100, -0400, -0500, +0000 all seen across AU1/UK1/CA2), not always +0000, so the offset
+    has to actually be parsed and subtracted, not assumed away."""
+    if not raw or len(raw) < 14:
+        return None
+    try:
+        dt = datetime.strptime(raw[:14], '%Y%m%d%H%M%S')
+        off = raw[14:].strip()
+        if off:
+            sign = 1 if off[0] == '+' else -1
+            dt -= sign * timedelta(hours=int(off[1:3]), minutes=int(off[3:5]))
+        return dt.replace(tzinfo=timezone.utc).timestamp()
+    except (ValueError, IndexError):
+        return None
+
+
+def fetch_xmltv_programmes(source, cache, horizon_days=DAYS_AHEAD):
+    """Streams the feed with ET.iterparse instead of loading the whole DOM -- these decompress to
+    hundreds of thousands of lines (CA2 alone is ~90MB uncompressed) -- and clears every element after
+    reading it so memory stays bounded by "how many programmes are in the sports-channel/time-window
+    slice", never by the file's real total size. Returns (programmes, channel_names); channel_names
+    maps a raw id ("FoxSports505.au") to its real <display-name> ("Fox Sports 505") so guide-v2.json
+    doesn't publish the raw XMLTV id as the channel name."""
+    cache_key = 'xmltv|%s' % source['country']
+    entry = cache.get(cache_key)
+    if entry and time.time() - entry.get('fetched_at', 0) < XMLTV_MAX_AGE:
+        return entry.get('programmes') or [], entry.get('names') or {}
+    try:
+        req = urllib.request.Request(source['url'], headers=UA)
+        with urllib.request.urlopen(req, timeout=120) as r:
+            raw = gzip.decompress(r.read())
+    except Exception as e:
+        print('XMLTV fetch failed for %s: %s' % (source['country'], e), file=sys.stderr)
+        return (entry.get('programmes'), entry.get('names')) if entry else ([], {})
+
+    now = time.time()
+    lo, hi = now - 864e2, now + horizon_days * 864e2
+    wanted_ids, names, programmes = set(), {}, []
+    for _, elem in ET.iterparse(io.BytesIO(raw), events=('end',)):
+        if elem.tag == 'channel':
+            cid = elem.get('id') or ''
+            dn = elem.findtext('display-name') or ''
+            if source['channel_re'].search(cid) or source['channel_re'].search(dn):
+                wanted_ids.add(cid)
+                names[cid] = dn.strip() or cid
+            elem.clear()
+        elif elem.tag == 'programme':
+            cid = elem.get('channel') or ''
+            if cid in wanted_ids:
+                start = parse_xmltv_ts(elem.get('start'))
+                if start is not None and lo <= start <= hi:
+                    text = ' '.join(filter(None, [elem.findtext('title'), elem.findtext('sub-title'), elem.findtext('desc')]))
+                    stop = parse_xmltv_ts(elem.get('stop')) or (start + 3600)
+                    programmes.append({'channel': cid, 'start': start, 'stop': stop, 'text': text})
+            elem.clear()
+    cache[cache_key] = {'fetched_at': now, 'programmes': programmes, 'names': names}
+    print('XMLTV %s: %d sports-channel programmes in the next %d days' % (source['country'], len(programmes), horizon_days), file=sys.stderr)
+    return programmes, names
+
+
+def load_xmltv(cache):
+    """Fetches every country once per resolve() run (not once per league -- these are expensive, multi-
+    MB downloads) and hands every league the same shared index."""
+    out = {}
+    for source in XMLTV_SOURCES:
+        programmes, names = fetch_xmltv_programmes(source, cache)
+        out[source['country']] = {'programmes': programmes, 'names': names}
+    return out
+
+
+def norm_text(s):
+    """Same normalisation as the TV app's own norm() (accent-strip, lowercase, punctuation to spaces)
+    -- kept separate from norm_team below, which additionally strips club-name filler words ("FC",
+    "United"...) that would be wrong to strip from a tournament/event label."""
+    import unicodedata
+    s = unicodedata.normalize('NFD', s or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r'[^a-z0-9]+', ' ', s.lower().replace('&', ' and ').replace("'", ''))
+    return s.strip()
+
+
+def xmltv_text_matches(text, fixture):
+    """The same matching RULE as the TV app's own eventMatchesFixture (team-pair match for team sports,
+    else competition name or distinctive event-label words, generic filler excluded) -- same rule,
+    independently applied here because this file has no access to the client's JS, not a different or
+    looser standard. Reuses teams_match/norm_team already in this file for the team-sport case."""
+    if fixture.get('home') and fixture.get('away'):
+        return teams_match(fixture['home'], fixture['away'], text)
+    t = ' ' + norm_text(text) + ' '
+    comp = norm_text(fixture.get('comp') or '')
+    if comp and (' ' + comp + ' ') in t:
+        return True
+    label = norm_text(fixture.get('label') or '')
+    words = [w for w in label.split() if len(w) > 3 and w not in EVENT_LABEL_STOP]
+    return any((' ' + w + ' ') in t for w in words)
+
+
+# Same generic-filler-word list as the TV app's EVENT_LABEL_STOP (eventMatchesFixture) -- kept as its
+# own copy, not shared code, for the same reason xmltv_text_matches above is its own function: this
+# file and index.html don't share a runtime, so the one shared thing that actually matters is the RULE,
+# applied identically on both sides, not a literal shared constant.
+EVENT_LABEL_STOP = {'grand', 'prix', 'open', 'tour', 'cup', 'championship', 'classic', 'invitational',
+                     'masters', 'series', 'race', 'round', 'stage', 'world', 'international', 'national',
+                     'event', 'fight', 'night', 'tournament'}
+
+
+def xmltv_channels_for_fixture(fixture, xmltv, now_iso):
+    out = []
+    for cc, idx in xmltv.items():
+        for p in idx['programmes']:
+            if p['stop'] < fixture['kick_ts'] - 3 * 3600 or p['start'] > fixture['kick_ts'] + 6 * 3600:
+                continue
+            if not xmltv_text_matches(p['text'], fixture):
+                continue
+            out.append({
+                'channel': idx['names'].get(p['channel'], p['channel']), 'country': cc,
+                'kind': classify_kind(p['start'], fixture['kick_ts']), 'inferred_kind': True,
+                'start': datetime.fromtimestamp(p['start'], tz=timezone.utc).isoformat(),
+                'confidence': 'likely', 'source': 'xmltv', 'checked': now_iso,
+            })
+    return out
 
 
 def fetch_json(url, headers=None):
@@ -602,7 +764,7 @@ def espn_channels_daily(src, fixtures, cache, now_iso):
                     f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
 
 
-def resolve_league(league, cache):
+def resolve_league(league, cache, xmltv=None):
     fixtures = fetch_football_data_fixtures(league) if league['fixtures'] == 'football-data' else fetch_tsdb_fixtures(league, cache)
     if not fixtures:
         return []
@@ -647,6 +809,14 @@ def resolve_league(league, cache):
             espn_channels_tournament(espn_src, fixtures, cache, now_iso)
         else:
             espn_channels_daily(espn_src, fixtures, cache, now_iso)
+
+    # Applies to every league, not just the five TheSportsDB's eventstv.php has nothing for -- this is
+    # real per-fixture programme data (a genuine text match against this specific event, not a standing-
+    # rights guess), so it's just as valid corroborating evidence for Premier League or the NBA as it is
+    # for NASCAR. Still tagged 'likely', same as everything else here.
+    if xmltv:
+        for f in fixtures:
+            f['channels'].extend(xmltv_channels_for_fixture(f, xmltv, now_iso))
 
     for f in fixtures:
         del f['kick_ts']
@@ -713,6 +883,10 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
     now_iso = datetime.now(timezone.utc).isoformat()
     events, resolved = [], []
     leagues = leagues_matching(only)
+    # Loaded once here, not inside resolve_league() -- these are multi-MB downloads; fetching them
+    # once per resolve() run and sharing the result across every league is the whole point (and why
+    # fetch_xmltv_programmes' own cache keys by country, not by league).
+    xmltv = load_xmltv(cache)
     old_handler = signal.signal(signal.SIGTERM, _raise_interrupted)
     try:
         for league in leagues:
@@ -720,7 +894,7 @@ def resolve(cache, only=None, checkpoint=None, deadline=None):
                 print('Soft deadline reached -- stopping before %s so the publish steps still run.' % league['comp'], file=sys.stderr)
                 break
             try:
-                got = resolve_league(league, cache)
+                got = resolve_league(league, cache, xmltv)
             except Interrupted:
                 print('Interrupted during %s -- keeping what already resolved.' % league['comp'], file=sys.stderr)
                 break
