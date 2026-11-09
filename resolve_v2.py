@@ -128,7 +128,15 @@ LEAGUES = [
     {'comp': 'A-League', 'fixtures': 'tsdb', 'tsdb_league_id': '4356', 'tsdb_sport': 'Soccer'},
     {'comp': 'AFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4456', 'tsdb_sport': 'Australian Football'},
     {'comp': 'NRL', 'fixtures': 'tsdb', 'tsdb_league_id': '4416', 'tsdb_sport': 'Rugby'},
-    # Rugby and Cricket are NOT added here on purpose: both are a single generic comp in the app
+    # Added 2026-11-09 after the owner reported a real, current gap: live mid-tournament (final
+    # 2026-11-15), zero coverage. Id 5806 confirmed against the owner's own real TheSportsDB key (the
+    # free test key's all_leagues.php only returns a crippled 10-league demo, useless for this kind of
+    # lookup -- 5806 doesn't exist in that subset at all, which is exactly why this got missed for so
+    # long). Real fixtures confirmed: 15 played this tournament already (as recently as 2026-11-08,
+    # Australia v Samoa), final listed 2026-11-15. Unambiguous like AFL/NRL, not a "which competition"
+    # judgement call -- shares NRL's app tab (Rugby League / NRL), not the generic Rugby one.
+    {'comp': 'Rugby League World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '5806', 'tsdb_sport': 'Rugby'},
+    # Rugby (generic tab) and Cricket are NOT added here on purpose: both are a single generic comp in the app
     # (COMPS/SPORT_GROUPS just has one "Rugby" and one "Cricket", no finer split), but TheSportsDB has
     # dozens of real leagues under each -- Six Nations, United Rugby Championship, Rugby Championship,
     # Super Rugby for Rugby; international Test/ODI/T20I series, IPL, Big Bash, The Hundred for Cricket
@@ -274,7 +282,13 @@ ESPN_SOURCES = [
 # costs a little parse time; under-matching one silently drops a real channel, the actual risk.
 XMLTV_SOURCES = [
     {'country': 'AU', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz',
-     'channel_re': re.compile(r'fox\s*sports|fox8|espn|bein|kayo', re.I)},
+     # 'fox\s*league' added 2026-11-09 for Rugby League World Cup (see LEAGUES): a real 'Fox League'
+     # channel exists in this feed (confirmed by hand), the actual Australian rugby league rights
+     # holder in real life. No programme-level confirmation yet against a specific RLWC match -- this
+     # feed's current window didn't have one at the moment of checking -- so treat this the same as
+     # Cycling/TNT: real corroborating evidence (the channel itself, genuinely exists), not a live-
+     # verified match yet.
+     'channel_re': re.compile(r'fox\s*sports|fox8|fox\s*league|espn|bein|kayo', re.I)},
     {'country': 'UK', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz',
      'channel_re': re.compile(r'sky\s*sp|tnt\s*sports?|premier\s*sports|bein', re.I)},
     {'country': 'NZ', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_NZ1.xml.gz',
