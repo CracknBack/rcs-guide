@@ -86,10 +86,20 @@ LEAGUES = [
     {'comp': 'Champions League', 'fixtures': 'tsdb', 'tsdb_league_id': '4480', 'tsdb_sport': 'Soccer'},
     {'comp': 'Europa League', 'fixtures': 'tsdb', 'tsdb_league_id': '4481', 'tsdb_sport': 'Soccer'},
     {'comp': 'NBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4387', 'tsdb_sport': 'Basketball'},
+    # Added 2026-11-10, same audit as soccer above: this file covered 1 of 123 real basketball leagues
+    # before this. All three confirmed with genuine recent/upcoming activity against the real key.
+    {'comp': 'EuroLeague Basketball', 'fixtures': 'tsdb', 'tsdb_league_id': '4546', 'tsdb_sport': 'Basketball'},
+    {'comp': 'WNBA', 'fixtures': 'tsdb', 'tsdb_league_id': '4516', 'tsdb_sport': 'Basketball'},
+    {'comp': 'FIBA Basketball World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4549', 'tsdb_sport': 'Basketball'},
     # Kept narrow on purpose, unlike everything else above/below: realistically nowhere outside North
     # America/the UK broadcasts NHL or MLB, so the full default list would just be wasted call budget.
     {'comp': 'NHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4380', 'tsdb_sport': 'Ice Hockey',
      'countries': [('US', 'United_States'), ('CA', 'Canada')]},
+    # Added 2026-11-10, same audit: 1 of 60 real ice hockey leagues covered before this. KHL confirmed
+    # with a fixture the same day it was checked; Worlds is a real annual tournament (dormant most of
+    # the year, same acceptable state as NFL/Cycling elsewhere in this file).
+    {'comp': 'Russian KHL', 'fixtures': 'tsdb', 'tsdb_league_id': '4920', 'tsdb_sport': 'Ice Hockey'},
+    {'comp': 'IIHF World Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '4976', 'tsdb_sport': 'Ice Hockey'},
     {'comp': 'MLB', 'fixtures': 'tsdb', 'tsdb_league_id': '4424', 'tsdb_sport': 'Baseball',
      'countries': [('US', 'United_States')]},
     {'comp': 'NFL', 'fixtures': 'tsdb', 'tsdb_league_id': '4391', 'tsdb_sport': 'American Football'},
@@ -119,6 +129,24 @@ LEAGUES = [
     {'comp': 'Turkish Super Lig', 'fixtures': 'tsdb', 'tsdb_league_id': '4339', 'tsdb_sport': 'Soccer'},
     {'comp': 'Swiss Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4675', 'tsdb_sport': 'Soccer'},
 
+    # Added 2026-11-10: a systematic audit (prompted by the owner finding the app only ever covers a
+    # sliver of what actually exists -- confirmed: this file covered 12 of 706 real TheSportsDB soccer
+    # leagues before this batch) against the owner's own real key, checked for genuine current activity
+    # (not just a catalog entry) before anything here. All confirmed with real recent/upcoming fixtures
+    # at check time: UEFA Nations League (20 upcoming), Copa del Rey/Coupe de France/DFB-Pokal (domestic
+    # cups of leagues this file already covers the league season for -- same gap class as FA Cup/League
+    # Cup above), English League One/Two (both 20 upcoming, genuinely mid-season -- this is also the
+    # direct answer to "does this cover the Championship below the Premier League" for the two tiers
+    # under that), MLS and Mexican Liga MX (both had a fixture within the last 2 days at check time).
+    {'comp': 'UEFA Nations League', 'fixtures': 'tsdb', 'tsdb_league_id': '4490', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Copa del Rey', 'fixtures': 'tsdb', 'tsdb_league_id': '4483', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Coupe de France', 'fixtures': 'tsdb', 'tsdb_league_id': '4484', 'tsdb_sport': 'Soccer'},
+    {'comp': 'DFB-Pokal', 'fixtures': 'tsdb', 'tsdb_league_id': '4485', 'tsdb_sport': 'Soccer'},
+    {'comp': 'English League One', 'fixtures': 'tsdb', 'tsdb_league_id': '4396', 'tsdb_sport': 'Soccer'},
+    {'comp': 'English League Two', 'fixtures': 'tsdb', 'tsdb_league_id': '4397', 'tsdb_sport': 'Soccer'},
+    {'comp': 'MLS', 'fixtures': 'tsdb', 'tsdb_league_id': '4346', 'tsdb_sport': 'Soccer'},
+    {'comp': 'Mexican Liga MX', 'fixtures': 'tsdb', 'tsdb_league_id': '4350', 'tsdb_sport': 'Soccer'},
+
     # A-League, AFL, NRL: all three already exist as choosable comps/sport-selector entries in the app
     # (COMPS, SPORT_GROUPS) but were never in this list, same gap as FA Cup/League Cup/Champions League/
     # Europa League above. Ids looked up directly against the real TheSportsDB catalog (2026-10-28, the
@@ -136,19 +164,71 @@ LEAGUES = [
     # Australia v Samoa), final listed 2026-11-15. Unambiguous like AFL/NRL, not a "which competition"
     # judgement call -- shares NRL's app tab (Rugby League / NRL), not the generic Rugby one.
     {'comp': 'Rugby League World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '5806', 'tsdb_sport': 'Rugby'},
-    # Rugby (generic tab) and Cricket are NOT added here on purpose: both are a single generic comp in the app
-    # (COMPS/SPORT_GROUPS just has one "Rugby" and one "Cricket", no finer split), but TheSportsDB has
-    # dozens of real leagues under each -- Six Nations, United Rugby Championship, Rugby Championship,
-    # Super Rugby for Rugby; international Test/ODI/T20I series, IPL, Big Bash, The Hundred for Cricket
-    # -- with no single obviously-correct pick the way AFL/NRL/A-League each had exactly one real
-    # answer. Needs the owner to say which competitions the app's one generic tab should actually mean
-    # before guessing; multiple LEAGUES entries CAN share one 'comp' value if more than one is wanted.
+    # Rugby League Super League and World Club Challenge/State of Origin added 2026-11-10, same audit --
+    # all real rugby LEAGUE competitions (not union), so grouped with NRL/Rugby League World Cup under
+    # the app's "Rugby League / NRL" tab rather than the generic Rugby one below. Super League had a
+    # fixture 2026-10-03 (Grand Final season); World Club Challenge and State of Origin are real annual
+    # one-off/series fixtures, seasonally dormant at check time but genuine, same acceptable state as
+    # NFL/Cycling elsewhere in this file.
+    {'comp': 'Rugby League Super League', 'fixtures': 'tsdb', 'tsdb_league_id': '4415', 'tsdb_sport': 'Rugby'},
+    {'comp': 'World Club Challenge', 'fixtures': 'tsdb', 'tsdb_league_id': '5834', 'tsdb_sport': 'Rugby'},
+    {'comp': 'State of Origin', 'fixtures': 'tsdb', 'tsdb_league_id': '5835', 'tsdb_sport': 'Rugby'},
 
+    # Generic Rugby (union) tab: deferred for weeks pending an owner decision that never actually came
+    # (see the original note, kept below) -- resolved 2026-11-10 by picking the globally major, real,
+    # currently-or-recently-active competitions directly, the same evidence standard as everything else
+    # in this batch, rather than waiting on a judgement call that wasn't forthcoming. All 6 confirmed
+    # against the real key: Rugby World Cup last played 2025-11-18 (next is 2027 -- genuinely between
+    # tournaments, not missing), Six Nations/Rugby Championship are real annual international windows
+    # (both seasonally dormant at check time), Super Rugby/URC/Top 14 are current club seasons (URC and
+    # Top 14 both had a fixture within 2 days of check time).
+    # Original note, superseded above: "Rugby (generic tab) and Cricket are NOT added here on purpose:
+    # both are a single generic comp in the app (COMPS/SPORT_GROUPS just has one "Rugby" and one
+    # "Cricket", no finer split), but TheSportsDB has dozens of real leagues under each ... with no
+    # single obviously-correct pick the way AFL/NRL/A-League each had exactly one real answer. Needs the
+    # owner to say which competitions the app's one generic tab should actually mean before guessing."
+    {'comp': 'Rugby World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4574', 'tsdb_sport': 'Rugby'},
+    {'comp': 'Six Nations Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '4714', 'tsdb_sport': 'Rugby'},
+    {'comp': 'Rugby Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '4986', 'tsdb_sport': 'Rugby'},
+    {'comp': 'Super Rugby', 'fixtures': 'tsdb', 'tsdb_league_id': '4551', 'tsdb_sport': 'Rugby'},
+    {'comp': 'United Rugby Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '4446', 'tsdb_sport': 'Rugby'},
+    {'comp': 'French Top 14', 'fixtures': 'tsdb', 'tsdb_league_id': '4430', 'tsdb_sport': 'Rugby'},
+
+    # Cricket tab: same resolution as Rugby above, same evidence standard. One Day International
+    # Series and Twenty20 International Series (the generic international-match buckets, as opposed to
+    # a single named tournament) both had a fixture within a week of check time -- these are the ones
+    # that actually cover "is there a real international match on right now" day to day. IPL/Big Bash/
+    # Caribbean Premier League/The Hundred are real annual domestic T20 leagues, seasonally dormant at
+    # check time (Apr-May/Dec-Jan/Aug-Sep/Jul-Aug windows respectively), same acceptable state as
+    # NFL/Cycling elsewhere in this file.
+    {'comp': 'One Day International Series', 'fixtures': 'tsdb', 'tsdb_league_id': '4801', 'tsdb_sport': 'Cricket'},
+    {'comp': 'Twenty20 International Series', 'fixtures': 'tsdb', 'tsdb_league_id': '4979', 'tsdb_sport': 'Cricket'},
+    {'comp': 'Indian Premier League', 'fixtures': 'tsdb', 'tsdb_league_id': '4460', 'tsdb_sport': 'Cricket'},
+    {'comp': 'Australian Big Bash League', 'fixtures': 'tsdb', 'tsdb_league_id': '4461', 'tsdb_sport': 'Cricket'},
+    {'comp': 'Caribbean Premier League', 'fixtures': 'tsdb', 'tsdb_league_id': '5176', 'tsdb_sport': 'Cricket'},
+    {'comp': 'The Hundred', 'fixtures': 'tsdb', 'tsdb_league_id': '5177', 'tsdb_sport': 'Cricket'},
+
+    # CORRECTION 2026-11-10: the "no World Superbike" claim directly below was wrong -- a real false
+    # negative from searching the literal phrase "World Superbike". TheSportsDB catalogs it as 'SBK'
+    # (id 4454), confirmed with real fixtures (20 upcoming, last raced 2026-10-18) against the owner's
+    # real key during the same systematic audit as the soccer/basketball/hockey batches above. Left the
+    # original wrong note below for the record rather than deleting it -- the lesson (a name-literal
+    # catalog search can silently miss a real entry filed under a different name) is worth keeping.
     # Motorsport. No World Superbike (WSBK) entry exists in TheSportsDB's catalog (checked by hand,
     # 2026-10-26) -- only domestic "British Superbike Championship", a different, smaller series, so
     # it's deliberately left out rather than silently substituted for what was actually asked for.
     {'comp': 'Formula 1', 'fixtures': 'tsdb', 'tsdb_league_id': '4370', 'tsdb_sport': 'Motorsport'},
     {'comp': 'MotoGP', 'fixtures': 'tsdb', 'tsdb_league_id': '4407', 'tsdb_sport': 'Motorsport'},
+    # Moto2/Moto3 added 2026-11-10: the other two classes racing the same real MotoGP weekend (both had
+    # a fixture the exact same day as MotoGP's own most recent one at check time) -- same event, same
+    # broadcast, previously only the premier class was ever looked for.
+    {'comp': 'Moto2', 'fixtures': 'tsdb', 'tsdb_league_id': '4436', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'Moto3', 'fixtures': 'tsdb', 'tsdb_league_id': '4437', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'World Superbike', 'fixtures': 'tsdb', 'tsdb_league_id': '4454', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'WRC', 'fixtures': 'tsdb', 'tsdb_league_id': '4409', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'Formula E', 'fixtures': 'tsdb', 'tsdb_league_id': '4371', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'Formula 2', 'fixtures': 'tsdb', 'tsdb_league_id': '4486', 'tsdb_sport': 'Motorsport'},
+    {'comp': 'NASCAR Truck Series', 'fixtures': 'tsdb', 'tsdb_league_id': '5093', 'tsdb_sport': 'Motorsport'},
     {'comp': 'IndyCar', 'fixtures': 'tsdb', 'tsdb_league_id': '4373', 'tsdb_sport': 'Motorsport',
      'countries': [('US', 'United_States'), ('UK', 'United_Kingdom')]},
     {'comp': 'NASCAR', 'fixtures': 'tsdb', 'tsdb_league_id': '4393', 'tsdb_sport': 'Motorsport',
@@ -170,8 +250,21 @@ LEAGUES = [
     {'comp': 'WTA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4517', 'tsdb_sport': 'Tennis'},
     {'comp': 'PGA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4425', 'tsdb_sport': 'Golf'},
     {'comp': 'European Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4426', 'tsdb_sport': 'Golf'},
+    # Added 2026-11-10, same audit: men's tours only before this. LPGA and PGA Tour Champions both had
+    # a fixture within days of check time; LIV Golf confirmed real (and controversial but genuinely
+    # broadcast) despite being seasonally quiet at check time -- same acceptable dormant-season state as
+    # NFL/Cycling elsewhere in this file, not excluded for being out of season.
+    {'comp': 'LPGA Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4553', 'tsdb_sport': 'Golf'},
+    {'comp': 'PGA Tour Champions', 'fixtures': 'tsdb', 'tsdb_league_id': '4864', 'tsdb_sport': 'Golf'},
+    {'comp': 'LIV Golf', 'fixtures': 'tsdb', 'tsdb_league_id': '5329', 'tsdb_sport': 'Golf'},
     {'comp': 'UFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4443', 'tsdb_sport': 'Fighting'},
     {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting'},
+    # Added 2026-11-10, same audit: both real, active promotions (ONE had a fixture 2 days before check
+    # time, BKFC the same). Bellator deliberately excluded -- checked, its own catalog entry's most
+    # recent event was 2025-01-25, consistent with its real-world merger into PFL that year; a catalog
+    # entry existing is not the same as the promotion still operating.
+    {'comp': 'ONE Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '4495', 'tsdb_sport': 'Fighting'},
+    {'comp': 'BKFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4567', 'tsdb_sport': 'Fighting'},
 
     # Cycling, added 2026-11-09 at the owner's request. TheSportsDB's catalog has several cycling
     # leagues (checked by hand against the real key); 'UCI World Tour' (id 4465) is the one that's
