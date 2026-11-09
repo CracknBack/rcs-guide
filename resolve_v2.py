@@ -405,13 +405,25 @@ XMLTV_SOURCES = [
      # feed's current window didn't have one at the moment of checking -- so treat this the same as
      # Cycling/TNT: real corroborating evidence (the channel itself, genuinely exists), not a live-
      # verified match yet.
-     'channel_re': re.compile(r'fox\s*sports|fox8|fox\s*league|espn|bein|kayo', re.I)},
+     # 'fox\s*cricket' added 2026-11-10 for Australian Big Bash League (see LEAGUES): a real 'Fox
+     # Cricket' channel exists in this feed (confirmed by hand), the actual Australian cricket rights
+     # holder in real life. Same corroborating-evidence standard as Fox League above -- channel
+     # confirmed real, no specific-match programme-level confirmation yet (Big Bash is seasonally
+     # dormant at check time, Dec-Jan window).
+     'channel_re': re.compile(r'fox\s*sports|fox8|fox\s*league|fox\s*cricket|espn|bein|kayo', re.I)},
     {'country': 'UK', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz',
      'channel_re': re.compile(r'sky\s*sp|tnt\s*sports?|premier\s*sports|bein', re.I)},
     {'country': 'NZ', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_NZ1.xml.gz',
      'channel_re': re.compile(r'sky\s*sport|espn', re.I)},
     {'country': 'CA', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_CA2.xml.gz',
      'channel_re': re.compile(r'tsn|sportsnet|fox\s*sports', re.I)},
+    # IN (India) added 2026-11-10 for Indian Premier League (see LEAGUES): a real 'Star Sports' channel
+    # family exists in this feed (confirmed by hand -- Star Sports 2 Hindi/Tamil/Telugu, Star Sports
+    # Khel), the actual Indian cricket rights holder in real life. No programme-level confirmation yet
+    # -- IPL is seasonally dormant at check time (Apr-May window) -- same corroborating-evidence
+    # standard as Fox League/Fox Cricket above.
+    {'country': 'IN', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_IN1.xml.gz',
+     'channel_re': re.compile(r'star\s*sports', re.I)},
     # epgshare01's "US_SPORTS1" is NOT this (checked by hand -- it's Minor League Baseball team
     # channels, zero real network content); "US2" is the real one with ESPN/FOX/CBS Sports/etc.
     # "tennis" added 2026-11-02: Tennis.Channel.HD.us2 is a real channel in this feed with real ATP/
