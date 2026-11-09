@@ -164,6 +164,18 @@ LEAGUES = [
     {'comp': 'European Tour', 'fixtures': 'tsdb', 'tsdb_league_id': '4426', 'tsdb_sport': 'Golf'},
     {'comp': 'UFC', 'fixtures': 'tsdb', 'tsdb_league_id': '4443', 'tsdb_sport': 'Fighting'},
     {'comp': 'Boxing', 'fixtures': 'tsdb', 'tsdb_league_id': '4445', 'tsdb_sport': 'Fighting'},
+
+    # Cycling, added 2026-11-09 at the owner's request. TheSportsDB's catalog has several cycling
+    # leagues (checked by hand against the real key); 'UCI World Tour' (id 4465) is the one that's
+    # actually the men's elite road calendar -- Tour de France, Giro, Vuelta, the Classics, 28 events a
+    # season -- not 'UCI Road World Championships' (one race a year) or the Olympics/defunct-teams
+    # entries also in that catalog. No strHomeTeam/strAwayTeam on its events (confirmed: a real past
+    # event, "Tour of Guangxi Stage 6", had both null) -- same individual/stage-race shape as
+    # Tennis/Golf/Motorsport above, so the existing strEvent-based fixture parsing already handles it
+    # with no special-casing. Right now (Nov) is the off-season -- eventsnextleague.php returns nothing
+    # until the calendar resumes in the new year -- so the TV-listing side below is configured on real
+    # corroborating evidence, not yet confirmed against an actual live race.
+    {'comp': 'Cycling', 'fixtures': 'tsdb', 'tsdb_league_id': '4465', 'tsdb_sport': 'Cycling'},
 ]
 
 # ESPN's public, unauthenticated Site v2 API (site.api.espn.com) -- confirmed by hand 2026-11-01 to
@@ -228,6 +240,20 @@ ESPN_SOURCES = [
 # with no single body or standing channel the way UFC/PGA/NASCAR have -- there is currently no free,
 # legitimate source for this one. Boxing still gets whatever TheSportsDB's eventstv.php happens to
 # carry (same as everything else), just nothing on top of it.
+#
+# No Cycling entry: checked by hand 2026-11-09, /apis/site/v2/sports/cycling/scoreboard 404s the same
+# way boxing's does -- ESPN's site API has no cycling sport at all. Doesn't need an XMLTV_SOURCES entry
+# either, unlike MotoGP/boxing above: TheSportsDB's own league metadata for UCI World Tour (id 4465)
+# names 'TNT Sports' as the real TV-rights holder, and UK1's channel_re already matches 'tnt\s*sports?'
+# (added for football's TNT Sports channels, well before cycling existed in this file) -- confirmed by
+# hand the same day that UK1 genuinely carries 11 separate TNT Sports channels. No Eurosport channel
+# exists in any of AU1/UK1/NZ1/CA2/US2 (checked by hand; TNT absorbed Eurosport's UK sports rights a
+# few years back, consistent with TheSportsDB's own claim) -- don't add an 'eurosport' pattern, there's
+# nothing in these feeds for it to match. Cycling is in the Northern Hemisphere off-season right now
+# (eventsnextleague.php for 4465 returns nothing), so there's no live race to confirm an actual
+# programme-level TNT Sports listing against yet -- this is configured on real corroborating evidence
+# (the league's own rights-holder field, the channel's real existence in UK1), not a live-verified
+# match the way MotoGP/IndyCar/UFC above are. Worth a real check once the season resumes in the new year.
 
 # Real per-country TV guide XMLTV feeds, checked by hand 2026-11-02 after the raw Foxtel/Sky backend
 # APIs that power them turned out dead/walled (tvguide.foxsports.com.au returns HTTP 200 with a fully
