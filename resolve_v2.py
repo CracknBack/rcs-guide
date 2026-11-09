@@ -325,7 +325,31 @@ ESPN_SOURCES = [
     # UFC's current US rights holder). Same US-only caveat as every other ESPN_SOURCES entry.
     {'comp': 'IndyCar', 'espn_path': 'racing/irl', 'kind': 'daily'},
     {'comp': 'UFC', 'espn_path': 'mma/ufc', 'kind': 'daily'},
+    # Added 2026-11-10, part of the systematic coverage audit's TV-listing follow-up: checked TheSportsDB
+    # eventstv.php for all 40 newly-added LEAGUES comps against the owner's real key -- every single one
+    # confirmed empty (34 of 40 checked cleanly before hitting the real key's per-minute rate limit; the
+    # other 6 are untested, not confirmed either way, flagged below). 'teams' shape like Eredivisie above
+    # (multiple team-vs-team games a day, matched by name) -- not 'daily' (one single event a day). MLS
+    # confirmed live by hand: real broadcasts, 'Apple TV' -- correct, MLS's actual real-world US rights
+    # holder since 2023. WNBA confirmed live by hand too, but the real endpoint had nothing to show at
+    # check time (its 2026 season just ended, 2026-11-05) -- same acceptable just-finished-season state
+    # as NFL/Cycling elsewhere in this file, not a broken path.
+    {'comp': 'MLS', 'espn_path': 'soccer/usa.1', 'kind': 'teams'},
+    {'comp': 'WNBA', 'espn_path': 'basketball/wnba', 'kind': 'teams'},
 ]
+# TV-listing follow-up still needed for the rest of the 2026-11-10 batch (confirmed empty on
+# TheSportsDB's own TV data, not yet checked against ESPN/XMLTV): UEFA Nations League, Copa del Rey,
+# Coupe de France, DFB-Pokal, English League One/Two, Mexican Liga MX, EuroLeague Basketball,
+# FIBA Basketball World Cup, Russian KHL, IIHF World Championship, Moto2, Moto3, World Superbike, WRC,
+# Formula E, Formula 2, NASCAR Truck Series, LPGA Tour, PGA Tour Champions, LIV Golf, ONE Championship,
+# BKFC, Rugby World Cup, Six Nations Championship, Rugby Championship, Super Rugby, United Rugby
+# Championship, French Top 14, Rugby League Super League, World Club Challenge, State of Origin, One Day
+# International Series, Twenty20 International Series, Indian Premier League, Australian Big Bash
+# League, Caribbean Premier League, The Hundred. Use tools/audit_coverage.py's pattern (checked by hand,
+# paced to respect the rate limit this session hit at ~30 rapid calls) to work through these -- likely
+# candidates by real-world knowledge, not yet verified: Sky Sports/TNT for the English/European domestic
+# cups (same channels already in XMLTV_SOURCES for football), a cricket-specific XMLTV check for the
+# Indian/Australian/Caribbean T20 leagues, Eurosport/TNT for the rugby union competitions.
 # No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
 # exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
 # real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
