@@ -723,10 +723,15 @@ def fetch_football_data_fixtures(league, max_retries=3):
         kick = datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00'))
         if kick > horizon:
             continue
+        # 'round': football-data.org's own 'stage' field is a real text value ("REGULAR_SEASON",
+        # "FINAL", "SEMI_FINALS", "QUARTER_FINALS", "ROUND_16", "GROUP_STAGE", ...) -- a cleaner,
+        # directly-readable knockout signal than TheSportsDB's numeric intRound codes below, but still
+        # not a universal shape across both sources, so the client treats this the same way: a
+        # knockout-stage signal to check for keywords against, never assumed to be one consistent type.
         out.append({'id': 'fd:%s:%s' % (league['fd_comp'], m['id']), 'comp': league['comp'], 'tsdb_id': None,
                     'home': m['homeTeam']['name'], 'away': m['awayTeam']['name'],
                     'label': m['homeTeam']['name'] + ' v ' + m['awayTeam']['name'],
-                    'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status']})
+                    'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status'], 'round': m.get('stage')})
     return out
 
 
@@ -768,10 +773,17 @@ def fetch_tsdb_fixtures(league, cache):
             home, away = e.get('strHomeTeam'), e.get('strAwayTeam')
             if not e.get('idEvent') or not (home or away or e.get('strEvent')):
                 continue
+            # 'round': raw intRound, kept as TheSportsDB sends it (a plain integer string for most
+            # leagues' regular season, but special non-linear codes for knockout stages on some comps --
+            # e.g. confirmed on the Rugby League World Cup final, intRound="200" -- so this is NOT safe
+            # to rank by as a plain number across competitions; the client-side significance scoring
+            # (Event Hub plan item 3) treats it as a knockout-stage signal via a threshold/keyword check,
+            # never a linear "higher round = more important" comparison. Passed through as-is, string or
+            # None, no parsing here -- added 2026-11-10, first-ever capture of this field in this file.
             out.append({'id': 'tsdb:%s' % e.get('idEvent'), 'comp': league['comp'], 'tsdb_id': e.get('idEvent'),
                         'home': home, 'away': away, 'label': e.get('strEvent') or ((home or '') + ' vs ' + (away or '')),
                         'kick': datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(), 'kick_ts': ts,
-                        'status': e.get('strStatus') or 'NS'})
+                        'status': e.get('strStatus') or 'NS', 'round': e.get('intRound')})
     # the next/past endpoints can both return an event close to "now"; de-dupe by TheSportsDB's own id
     seen, dedup = set(), []
     for f in out:
@@ -1068,6 +1080,25 @@ def resolve_league(league, cache, xmltv=None):
     if xmltv:
         for f in fixtures:
             f['channels'].extend(xmltv_channels_for_fixture(f, xmltv, now_iso))
+
+    # Confidence tiers, added 2026-11-10 (Event Hub plan item 1): every source above already tags its
+    # own channel rows 'likely' and names its own source ('thesportsdb'/'espn'/'xmltv'), but until now
+    # nothing ever checked whether two of them independently landed on the SAME channel for the SAME
+    # fixture -- that agreement is real corroborating evidence (this file's own module docstring has
+    # always described "confirmed" as needing exactly that: two independent sources agreeing), it just
+    # was never actually computed. Grouped by a normalised channel-name slug (reusing _slug(), already
+    # used for comp-name matching below) rather than the raw name, since the same channel can arrive
+    # from two sources with slightly different formatting ("Sky Sports Main Event" vs "SKY SPORTS MAIN
+    # EVENT HD"); deliberately exact-slug rather than fuzzy, so this only upgrades confidence on a real,
+    # tight match, never guesses two differently-named channels are "the same" to manufacture agreement.
+    for f in fixtures:
+        by_slug = {}
+        for c in f['channels']:
+            by_slug.setdefault(_slug(c['channel']), []).append(c)
+        for rows in by_slug.values():
+            if len({c['source'] for c in rows}) >= 2:
+                for c in rows:
+                    c['confidence'] = 'confirmed'
 
     for f in fixtures:
         del f['kick_ts']
