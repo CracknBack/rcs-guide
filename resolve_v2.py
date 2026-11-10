@@ -784,6 +784,101 @@ def ausportguide_channels_for_fixture(fixture, events, now_iso):
     return out
 
 
+# ---- tvsports.in (India, multi-sport TV guide, free/no-login) ----
+# Found 2026-11-10 in the same research pass that found ausportguide.com -- directly closes this file's
+# single biggest remaining gap: real Star Sports/SONY Ten/SONY LIV channel-level data for Indian cricket
+# (ODI/T20I/IPL all needed exactly this granularity and had nothing before). Verified by hand: the
+# cricket page's real embedded fixture data has "New Zealand - India" (One Day International) on real
+# channels SONY LIV/SONY Ten 1/3/4/5, and the football page has the same shape with real UEFA Nations
+# League data. robots.txt explicitly allows crawling (only /go? and /app/news disallowed).
+#
+# Structurally nicer than ausportguide.com's regex scrape: this is a Next.js App Router site, which
+# streams its page data as escaped JSON strings inside `self.__next_f.push([1,"..."])` calls rather than
+# rendering everything into plain HTML -- the chunk containing "oldFixtures" IS a real JSON string
+# literal (quotes and all), so json.loads-ing it directly recovers the real underlying JSON text, and a
+# plain brace-match from its "data": key extracts the fixtures object with no HTML parsing at all. Still
+# an unofficial, undocumented structure (no public API) -- could break on a redesign -- but far less
+# fragile than matching literal CSS classes the way the AU scrape has to.
+TVSPORTS_BASE = 'https://www.tvsports.in/sport/'
+TVSPORTS_PATHS = {'Cricket': 'cricket', 'Soccer': 'football', 'Basketball': 'basketball',
+                   'Tennis': 'tennis', 'Golf': 'golf'}   # 'motorsport' checked by hand, 404s -- not a real path here
+TVSPORTS_MAX_AGE = 2 * 3600
+_TVSPORTS_CHUNK_RE = re.compile(r'self\.__next_f\.push\(\[1,(".*?")\]\)', re.S)
+
+
+def _parse_tvsports_html(html):
+    chunks = _TVSPORTS_CHUNK_RE.findall(html)
+    target = next((c for c in chunks if 'oldFixtures' in c), None)
+    if not target:
+        return []
+    try:
+        real_text = json.loads(target)
+        idx = real_text.find('"data":{')
+        if idx < 0:
+            return []
+        start = idx + len('"data":')
+        depth, i = 0, start
+        while i < len(real_text):
+            if real_text[i] == '{':
+                depth += 1
+            elif real_text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        data = json.loads(real_text[start:i + 1])
+    except (ValueError, json.JSONDecodeError):
+        return []
+    out = []
+    for day in data.values():
+        for f in (day.get('newFixtures') or []) + (day.get('oldFixtures') or []):
+            if not f.get('channels'):
+                continue
+            # "2026-11-10T02:00:00.000Z" -> "2026-11-10T02:00:00" (parse_ts's format has no fractional
+            # seconds or a trailing Z -- both of those are always UTC already here, same as everywhere
+            # else in this file, so simply truncating before the dot is exact, not an approximation).
+            ts = parse_ts((f.get('date') or '').split('.')[0])
+            if ts is None:
+                continue
+            out.append({
+                'title': ' '.join(filter(None, [f.get('home_team'), f.get('visiting_team'), f.get('league')])),
+                'ts': ts,
+                'stations': [c['name'] for c in f['channels'] if c.get('name')],
+            })
+    return out
+
+
+def fetch_tvsports_page(path, cache):
+    cache_key = 'tvsports|' + path
+    c = cache.get(cache_key)
+    if c and time.time() - c['ts'] < TVSPORTS_MAX_AGE:
+        return c['events']
+    try:
+        req = urllib.request.Request(TVSPORTS_BASE + path, headers=UA)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            html = r.read().decode('utf-8', 'replace')
+        events = _parse_tvsports_html(html)
+    except Exception:
+        return (c or {}).get('events', [])   # additive source: a failed fetch just leaves whatever's cached, never breaks the rest of the guide
+    cache[cache_key] = {'ts': time.time(), 'events': events}
+    return events
+
+
+def tvsports_channels_for_fixture(fixture, events, now_iso):
+    out = []
+    for e in events:
+        if abs(e['ts'] - fixture['kick_ts']) > 20 * 3600 or not xmltv_text_matches(e['title'], fixture):
+            continue
+        for st in e['stations']:
+            out.append({
+                'channel': st, 'country': 'IN',
+                'kind': classify_kind(e['ts'], fixture['kick_ts']), 'inferred_kind': True,
+                'start': datetime.fromtimestamp(e['ts'], tz=timezone.utc).isoformat(),
+                'confidence': 'likely', 'source': 'tvsports', 'checked': now_iso,
+            })
+    return out
+
+
 def fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers={**UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -1272,6 +1367,13 @@ def resolve_league(league, cache, xmltv=None):
         ag_events = fetch_ausportguide_page(ag_path, cache)
         for f in fixtures:
             f['channels'].extend(ausportguide_channels_for_fixture(f, ag_events, now_iso))
+
+    # tvsports.in -- see its own comment block above fetch_tvsports_page for what/why.
+    tvs_path = TVSPORTS_PATHS.get(league['tsdb_sport'])
+    if tvs_path:
+        tvs_events = fetch_tvsports_page(tvs_path, cache)
+        for f in fixtures:
+            f['channels'].extend(tvsports_channels_for_fixture(f, tvs_events, now_iso))
 
     # Confidence tiers, added 2026-11-10 (Event Hub plan item 1): every source above already tags its
     # own channel rows 'likely' and names its own source ('thesportsdb'/'espn'/'xmltv'), but until now
