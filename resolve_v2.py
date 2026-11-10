@@ -690,6 +690,100 @@ def xmltv_channels_for_fixture(fixture, xmltv, now_iso):
     } for v in best.values()]
 
 
+# ---- ausportguide.com (AU, multi-sport TV guide, free/no-login, HTML scrape) ----
+# Found 2026-11-10 by the owner directly, mid-investigation of the Pakistan vs Sri Lanka Test match
+# that started tonight's whole cricket audit -- they spotted it had their exact match with their exact
+# real channel numbers ("Fox Sports 503, Fox Sports 505, Fox Sports More"), confirmed by hand against
+# the live page. Genuinely the best single find of the session: one page per sport covering nearly
+# everything this file has thin coverage for (cricket generally) or a confirmed hard dead end on every
+# other source (boxing/MMA -- real DAZN entries confirmed present). No public API, no robots.txt --
+# this is a straight HTML scrape of a small commercial site (it has its own iOS/Android apps), more
+# fragile than the documented ESPN/XMLTV sources above: their markup can change and silently break
+# this with no warning. Treat it as a bonus signal, not load-bearing the way ESPN_SOURCES is.
+#
+# Each event block in the page HTML looks like:
+#   <div title="Pakistan - Sri Lanka - Test Series" class="list-group-item  d-flex gap-3 shadow-sm schedule-event">
+#     ...<span class="schedule-live-status" data-start="1794198600" hidden></span>...
+#     <span class="schedule-station stationImg">Fox Sports 503</span><span class="schedule-station stationImg">Fox Sports 505</span>...
+#   </div>
+# The title attribute already gives team names (or a single event name) plus the league/competition,
+# space-separated by " - " -- fed straight into the existing teams_match()/xmltv_text_matches() logic
+# below rather than re-implementing team-name extraction, so this gets the exact same matching standard
+# (and the exact same false-positive guards) as the XMLTV path already has.
+AUSPORTGUIDE_BASE = 'https://ausportguide.com/live-sports-tv-guide/'
+# Keyed by tsdb_sport (like AUSPORTGUIDE_RUGBY_LEAGUE_COMPS below, one fetch covers every comp sharing
+# that sport, same dedup reasoning as the TSDB TV-day cache). Checked by hand 2026-11-10: this site has
+# no separate Rugby Union page at all (its own nav only lists "Rugby league"), so 'Rugby' can't be a
+# blanket entry here the way the others are -- Six Nations/Super Rugby/URC/etc. get nothing from this
+# source, same honest gap as everywhere else tonight, not a bug.
+AUSPORTGUIDE_PATHS = {
+    'Cricket': 'cricket', 'Fighting': 'boxing-mma', 'Australian Football': 'aussie-rules',
+    'Basketball': 'basketball', 'Baseball': 'baseball', 'Tennis': 'tennis',
+    'Motorsport': 'motorsport', 'Soccer': 'football',
+}
+AUSPORTGUIDE_RUGBY_LEAGUE_PATH = 'rugby-league'
+AUSPORTGUIDE_RUGBY_LEAGUE_COMPS = {'NRL', 'Rugby League World Cup', 'Rugby League Super League',
+                                    'World Club Challenge', 'State of Origin'}
+AUSPORTGUIDE_MAX_AGE = 2 * 3600   # same reasoning as XMLTV_MAX_AGE -- not a live feed, no reason to re-scrape every 15-minute tick
+
+_AUSPORTGUIDE_EVENT_RE = re.compile(r'<div title="([^"]*)" class="[^"]*\bschedule-event\b[^"]*">')
+# NOT a literal-class match (used to be "list-group-item\s+d-flex gap-3 shadow-sm schedule-event",
+# word for word) -- confirmed by hand against a real downloaded page that PAST/already-aired events get
+# an extra "opacity-50" class spliced into the middle of that exact string for the greyed-out styling,
+# which the literal version silently failed to match. That didn't just drop those events -- their own
+# station spans then bled into whichever NEXT matched event's chunk (re.split's chunk boundaries are
+# "from this title to the next matched title", so an unmatched event in between gets absorbed into its
+# neighbour), producing real, confirmed duplicate/wrong-event channel assignments. Caught by testing
+# this parser against real saved pages before trusting it, not by assumption.
+_AUSPORTGUIDE_START_RE = re.compile(r'data-start="(\d+)"')
+_AUSPORTGUIDE_STATION_RE = re.compile(r'class="schedule-station[^"]*"[^>]*>([^<]*)<')
+
+
+def fetch_ausportguide_page(path, cache):
+    cache_key = 'ausportguide|' + path
+    c = cache.get(cache_key)
+    if c and time.time() - c['ts'] < AUSPORTGUIDE_MAX_AGE:
+        return c['events']
+    try:
+        req = urllib.request.Request(AUSPORTGUIDE_BASE + path, headers=UA)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            html = r.read().decode('utf-8', 'replace')
+    except Exception:
+        return (c or {}).get('events', [])   # additive source: a failed scrape just leaves whatever's cached, never breaks the rest of the guide
+    # re.split with one capture group yields [pre, title1, chunk1, title2, chunk2, ...] -- chunk_i runs
+    # up to the NEXT event's own title marker, so a findall inside it only ever sees this one event's
+    # own station spans, never leaks into the next event's.
+    parts = _AUSPORTGUIDE_EVENT_RE.split(html)
+    events = []
+    for i in range(1, len(parts) - 1, 2):
+        title, chunk = parts[i], parts[i + 1]
+        m = _AUSPORTGUIDE_START_RE.search(chunk)
+        if not m:
+            continue
+        stations = [s.strip() for s in _AUSPORTGUIDE_STATION_RE.findall(chunk)]
+        stations = [s for s in stations if s]
+        if not stations:
+            continue
+        events.append({'title': title, 'ts': int(m.group(1)), 'stations': stations})
+    cache[cache_key] = {'ts': time.time(), 'events': events}
+    return events
+
+
+def ausportguide_channels_for_fixture(fixture, events, now_iso):
+    out = []
+    for e in events:
+        if abs(e['ts'] - fixture['kick_ts']) > 20 * 3600 or not xmltv_text_matches(e['title'], fixture):
+            continue
+        for st in e['stations']:
+            out.append({
+                'channel': st, 'country': 'AU',
+                'kind': classify_kind(e['ts'], fixture['kick_ts']), 'inferred_kind': True,
+                'start': datetime.fromtimestamp(e['ts'], tz=timezone.utc).isoformat(),
+                'confidence': 'likely', 'source': 'ausportguide', 'checked': now_iso,
+            })
+    return out
+
+
 def fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers={**UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -1170,6 +1264,14 @@ def resolve_league(league, cache, xmltv=None):
     if xmltv:
         for f in fixtures:
             f['channels'].extend(xmltv_channels_for_fixture(f, xmltv, now_iso))
+
+    # ausportguide.com -- see its own comment block above fetch_ausportguide_page for what/why.
+    ag_path = AUSPORTGUIDE_PATHS.get(league['tsdb_sport']) or \
+        (AUSPORTGUIDE_RUGBY_LEAGUE_PATH if league['comp'] in AUSPORTGUIDE_RUGBY_LEAGUE_COMPS else None)
+    if ag_path:
+        ag_events = fetch_ausportguide_page(ag_path, cache)
+        for f in fixtures:
+            f['channels'].extend(ausportguide_channels_for_fixture(f, ag_events, now_iso))
 
     # Confidence tiers, added 2026-11-10 (Event Hub plan item 1): every source above already tags its
     # own channel rows 'likely' and names its own source ('thesportsdb'/'espn'/'xmltv'), but until now
