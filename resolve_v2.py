@@ -336,6 +336,27 @@ ESPN_SOURCES = [
     # as NFL/Cycling elsewhere in this file, not a broken path.
     {'comp': 'MLS', 'espn_path': 'soccer/usa.1', 'kind': 'teams'},
     {'comp': 'WNBA', 'espn_path': 'basketball/wnba', 'kind': 'teams'},
+    # NBA added 2026-11-10, found while the owner asked to specifically trace NBA end-to-end as a real
+    # test case: despite being one of the four original flagship comps in this file (alongside NHL/MLB/
+    # NFL), NBA was NEVER in ESPN_SOURCES at all -- confirmed TheSportsDB's own eventstv.php is empty for
+    # it too, same as everything else, so without this it had genuinely zero TV-listing support this
+    # whole time. Confirmed live by hand: real per-game broadcasts.php data, regional sports networks
+    # (Spectrum Sports Net, NBCSN, MavsTV, and several 'DAZN <city>' entries -- matches real-world NBA
+    # local broadcast deals, several teams moved to DAZN-powered regional networks in 2025-26). US-only,
+    # same caveat as every entry above; UK/AU XMLTV feeds checked by hand for NBA programme text, found
+    # nothing at the moment of checking -- inconclusive (NBA's actual UK/AU coverage is mostly via its
+    # own League Pass app, not a clean linear channel, so this may never populate much outside the US).
+    {'comp': 'NBA', 'espn_path': 'basketball/nba', 'kind': 'teams'},
+    # NHL/MLB/NFL: same discovery as NBA just above, checked the same session once the pattern showed up
+    # on the first one. All three are among the four ORIGINAL comps in this entire file (next to NBA) and
+    # had the exact same gap the whole time. All three confirmed live by hand with real broadcasts.php
+    # data matching real-world rights: NHL -- ESPN+, plus real regional networks (MSG, MSGSN, NBC Sports
+    # Philadelphia/Bay Area); MLB -- Fox (real regular-season national rights holder, even returned a real
+    # result despite being the off-season); NFL -- Prime Video, NFL Network, Fox (all real, current NFL
+    # broadcast partners). Same US-only caveat as every entry above.
+    {'comp': 'NHL', 'espn_path': 'hockey/nhl', 'kind': 'teams'},
+    {'comp': 'MLB', 'espn_path': 'baseball/mlb', 'kind': 'teams'},
+    {'comp': 'NFL', 'espn_path': 'football/nfl', 'kind': 'teams'},
 ]
 # TV-listing follow-up still needed for the rest of the 2026-11-10 batch (confirmed empty on
 # TheSportsDB's own TV data, not yet checked against ESPN/XMLTV): UEFA Nations League, Copa del Rey,
