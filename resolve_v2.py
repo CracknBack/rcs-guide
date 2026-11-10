@@ -207,6 +207,23 @@ LEAGUES = [
     {'comp': 'Australian Big Bash League', 'fixtures': 'tsdb', 'tsdb_league_id': '4461', 'tsdb_sport': 'Cricket'},
     {'comp': 'Caribbean Premier League', 'fixtures': 'tsdb', 'tsdb_league_id': '5176', 'tsdb_sport': 'Cricket'},
     {'comp': 'The Hundred', 'fixtures': 'tsdb', 'tsdb_league_id': '5177', 'tsdb_sport': 'Cricket'},
+    # Added 2026-11-10, found the hard way: the owner spotted a LIVE Pakistan vs Sri Lanka match on their
+    # own guide (Fox Sports) that this app showed nothing for. Root cause: this file had ZERO Test-cricket
+    # coverage -- confirmed live, that exact match is real, idEvent 2623108, league id 5100 "ICC World
+    # Test Championship", started 2026-11-09. 4844 "International Test Match Series" (bilateral Tests
+    # outside the WTC cycle) returned no next/past event at check time -- added anyway on the same
+    # evidence standard as Cycling/NASCAR Truck elsewhere in this file (a real, current TheSportsDB league
+    # id, just dormant right now, not a guess). Both ids come straight off TheSportsDB's own Pakistan
+    # Cricket team record (idTeam 137144), confirmed real, not guessed.
+    {'comp': 'ICC World Test Championship', 'fixtures': 'tsdb', 'tsdb_league_id': '5100', 'tsdb_sport': 'Cricket'},
+    {'comp': 'International Test Match Series', 'fixtures': 'tsdb', 'tsdb_league_id': '4844', 'tsdb_sport': 'Cricket'},
+    # Same session: the generic ODI/T20I buckets above only cover ICC's composite "any bilateral series"
+    # leagues -- the big ICC tournaments themselves are SEPARATE league ids on TheSportsDB, never added.
+    # All three confirmed real (same Pakistan Cricket team record) but dormant at check time (none run
+    # every year) -- added for completeness, same as every periodic/seasonal comp elsewhere in this file.
+    {'comp': 'Cricket World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '4575', 'tsdb_sport': 'Cricket'},
+    {'comp': 'ICC Mens T20 World Cup', 'fixtures': 'tsdb', 'tsdb_league_id': '5103', 'tsdb_sport': 'Cricket'},
+    {'comp': 'ICC Champions Trophy', 'fixtures': 'tsdb', 'tsdb_league_id': '5587', 'tsdb_sport': 'Cricket'},
 
     # CORRECTION 2026-11-10: the "no World Superbike" claim directly below was wrong -- a real false
     # negative from searching the literal phrase "World Superbike". TheSportsDB catalogs it as 'SBK'
@@ -357,20 +374,63 @@ ESPN_SOURCES = [
     {'comp': 'NHL', 'espn_path': 'hockey/nhl', 'kind': 'teams'},
     {'comp': 'MLB', 'espn_path': 'baseball/mlb', 'kind': 'teams'},
     {'comp': 'NFL', 'espn_path': 'football/nfl', 'kind': 'teams'},
+    # Added 2026-11-10, part of the same research pass that found the cricket/Test-match gap. Checked
+    # against ESPN's own authoritative league list (sports.core.api.espn.com/v2/sports/racing/leagues
+    # and .../golf/leagues -- the real enumerated slugs, not guessed ones), then confirmed live:
+    # 'racing/nascar-truck' -- real race, real broadcasts ("FS1"), same 'daily' pattern as NASCAR/IndyCar.
+    {'comp': 'NASCAR Truck Series', 'espn_path': 'racing/nascar-truck', 'kind': 'daily'},
+    # 'golf/lpga', 'golf/champions-tour' -- both real tournaments, real broadcasts ("Golf Chnl"), same
+    # 'tournament' pattern as PGA/European Tour (one call, no date, spans the whole event).
+    {'comp': 'LPGA Tour', 'espn_path': 'golf/lpga', 'kind': 'tournament'},
+    {'comp': 'PGA Tour Champions', 'espn_path': 'golf/champions-tour', 'kind': 'tournament'},
+    # 'golf/liv' -- real league, but the undated default call can return a canceled/empty event (checked
+    # by hand); confirmed real broadcasts only against specific past 2026-season dates ("FOX","FS1","FS2").
+    # Current (2025+) US rights holder is Fox, NOT The CW -- the CW deal was 2024-only and already ended;
+    # don't add a CW XMLTV pattern for this, it would chase a dead deal. 'tournament' kind still correct
+    # (LIV events are multi-day, one call covers the whole event) -- the undated-call caveat is the same
+    # risk every 'tournament' entry already accepts (PGA/European Tour), not something new here.
+    {'comp': 'LIV Golf', 'espn_path': 'golf/liv', 'kind': 'tournament'},
+    # 'basketball/fiba' -- found via ESPN's authoritative basketball/leagues list (which has no
+    # 'euroleague' slug at all -- confirmed dead end for that comp, don't add one). This is the single
+    # best find of the whole 2026-11-10 research pass: a free, no-auth ESPN endpoint with a genuinely
+    # non-empty broadcasts[] for a comp that had zero channel signal anywhere before (real data:
+    # "TNT","truTV","HBO Max" against real FIBA Basketball World Cup fixtures). 'teams' kind: country-vs-
+    # country games, several a day, matched by team name like WNBA/MLS/NBA above -- not a single standing
+    # event like NASCAR/golf.
+    {'comp': 'FIBA Basketball World Cup', 'espn_path': 'basketball/fiba', 'kind': 'teams'},
 ]
-# TV-listing follow-up still needed for the rest of the 2026-11-10 batch (confirmed empty on
-# TheSportsDB's own TV data, not yet checked against ESPN/XMLTV): UEFA Nations League, Copa del Rey,
-# Coupe de France, DFB-Pokal, English League One/Two, Mexican Liga MX, EuroLeague Basketball,
-# FIBA Basketball World Cup, Russian KHL, IIHF World Championship, Moto2, Moto3, World Superbike, WRC,
-# Formula E, Formula 2, NASCAR Truck Series, LPGA Tour, PGA Tour Champions, LIV Golf, ONE Championship,
-# BKFC, Rugby World Cup, Six Nations Championship, Rugby Championship, Super Rugby, United Rugby
-# Championship, French Top 14, Rugby League Super League, World Club Challenge, State of Origin, One Day
-# International Series, Twenty20 International Series, Indian Premier League, Australian Big Bash
-# League, Caribbean Premier League, The Hundred. Use tools/audit_coverage.py's pattern (checked by hand,
-# paced to respect the rate limit this session hit at ~30 rapid calls) to work through these -- likely
-# candidates by real-world knowledge, not yet verified: Sky Sports/TNT for the English/European domestic
-# cups (same channels already in XMLTV_SOURCES for football), a cricket-specific XMLTV check for the
-# Indian/Australian/Caribbean T20 leagues, Eurosport/TNT for the rugby union competitions.
+# UPDATE 2026-11-10 (second pass, same day): the TV-listing follow-up list below this comment used to
+# name everything as "still needed" -- a full research pass (4 parallel agents, real fetches, not
+# guesses) closed almost all of it. Resolved real sources went into LEAGUES/ESPN_SOURCES/XMLTV_SOURCES
+# above with their own comments. What's left, CONFIRMED DEAD (checked by hand, not just "not found yet"
+# -- don't re-research these without new evidence):
+# - Boxing: see the dedicated comment below. No change.
+# - ONE Championship: ESPN has no slug (confirmed against the real ~25-slug MMA list). No free XMLTV/API
+#   broadcaster source either -- onefc.com's own site only has ad hoc "How To Watch" mentions (e.g. Prime
+#   Video for one event), nothing structured/bulk. Fixtures-only via Wikipedia if ever needed.
+# - BKFC: same ESPN dead end as ONE. bkfc.com/events has real fixtures + "BKFC+/Fubo" branding (HTML
+#   only, no API). ufcalendar.com's free-tier API (1,000 req/mo, no card) explicitly covers BKFC
+#   broadcasts and is worth actually signing up for if this comp becomes worth the effort -- unverified
+#   beyond its own docs, no key was requested.
+# - Russian KHL: zero signal anywhere -- not in ESPN's hockey/leagues list at all, zero genuine XMLTV
+#   hits in any of the 5 feeds (checked with a \bkhl\b word-boundary, not just substring). Matches the
+#   real-world picture (KHL has almost no Western broadcast footprint post-2022).
+# - EuroLeague Basketball: same -- no ESPN slug, zero genuine XMLTV hits (its real rights are split
+#   across EuroLeague TV/FanDuel TV/L'Équipe/MagentaSport, none of which land in these linear EPG dumps).
+# - Formula E, Formula 2: no ESPN slug for either (confirmed against the real 5-slug racing/leagues
+#   list: f1/irl/nascar-premier/nascar-secondary/nascar-truck only). Every XMLTV hit investigated for
+#   both was a false positive (a DHL-logistics documentary namedropping Formula E; a Schumacher-career
+#   retrospective namedropping F2) -- not real event coverage. No free source exists for either.
+# Resolved this pass, sources now wired above: NASCAR Truck Series, LPGA Tour, PGA Tour Champions, LIV
+# Golf, FIBA Basketball World Cup (ESPN); Moto2/Moto3/World Superbike (already covered by existing
+# UK1/AU1 TNT/Fox Sports patterns, WSBK's US gap closed via a new 'racer' pattern); WRC (new CA2 'rev tv'
+# pattern, highlights-level, WRC+ still the only full-coverage source); AFL (new AU1 'fox footy'
+# pattern); Rugby Union -- all six comps (Six Nations/Rugby Championship/Super Rugby/URC/Top 14/Rugby
+# World Cup) already covered by existing UK1 Premier Sports/TNT and NZ1 Sky Sport patterns, live-verified
+# against real "Top 14 Rugby Union"/"PREM Rugby Cup"/All Blacks programme titles -- no code change
+# needed, ESPN itself has real fixtures for all six but always-empty broadcasts[] for every one; IIHF
+# World Championship -- already covered by existing CA2 TSN pattern, live-verified; Cricket (every comp)
+# -- see the dedicated Test-cricket/ODI/T20I/Hundred/CPL comments above.
 # No MotoGP entry: ESPN's site API doesn't carry it at all (checked by hand -- no motogp/motorsport path
 # exists under /apis/site/v2/sports/racing/). Its own official site (api.pulselive.motogp.com) confirms
 # real fixtures but has no broadcaster endpoint either (checked by hand, several guessed paths all 400).
@@ -430,14 +490,32 @@ XMLTV_SOURCES = [
      # Cricket' channel exists in this feed (confirmed by hand), the actual Australian cricket rights
      # holder in real life. Same corroborating-evidence standard as Fox League above -- channel
      # confirmed real, no specific-match programme-level confirmation yet (Big Bash is seasonally
-     # dormant at check time, Dec-Jan window).
-     'channel_re': re.compile(r'fox\s*sports|fox8|fox\s*league|fox\s*cricket|espn|bein|kayo', re.I)},
+     # dormant at check time, Dec-Jan window). UPDATE 2026-11-10: Fox Cricket now also programme-level
+     # confirmed for the generic ODI Series comp (not just channel-existence) -- real current titles
+     # "LIVE: ODI - AUS v ENG G1", "ODI Mini - NZL v IND G2" found in this feed at check time.
+     # 'fox\s*footy' added 2026-11-10 for AFL: a real 'Fox Footy' channel exists in this feed (confirmed
+     # by hand, real AFL/AFLW programming) -- distinct id from 'Fox Sports', so the existing
+     # fox\s*sports pattern never caught it. ESPN's own AFL endpoint returns real fixtures but an always-
+     # empty broadcasts[] (checked by hand), so this XMLTV channel is the only real signal for AFL.
+     'channel_re': re.compile(r'fox\s*sports|fox8|fox\s*league|fox\s*cricket|fox\s*footy|espn|bein|kayo', re.I)},
     {'country': 'UK', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz',
-     'channel_re': re.compile(r'sky\s*sp|tnt\s*sports?|premier\s*sports|bein', re.I)},
+     # 'bbc' added 2026-11-10 for The Hundred (see LEAGUES): real-world rights are split Sky Sports
+     # (all 68 matches, already caught by 'sky\s*sp' -- SkySpCricket.HD.uk confirmed in this feed with a
+     # real "The Hundred Highlights" title right now) + BBC One/Two (~16 free-to-air matches including
+     # the final, confirmed by hand against thehundred.com/Yahoo Sports). Closes what was previously a
+     # total-zero gap for this comp. Deliberately broad ('bbc' alone also matches BBC News/Parliament/
+     # etc.) -- same tradeoff this file already accepts elsewhere: a little wasted parse time costs far
+     # less than silently dropping a real free-to-air match.
+     'channel_re': re.compile(r'sky\s*sp|tnt\s*sports?|premier\s*sports|bein|bbc', re.I)},
     {'country': 'NZ', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_NZ1.xml.gz',
      'channel_re': re.compile(r'sky\s*sport|espn', re.I)},
     {'country': 'CA', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_CA2.xml.gz',
-     'channel_re': re.compile(r'tsn|sportsnet|fox\s*sports', re.I)},
+     # 'rev\s*tv' added 2026-11-10 for WRC: 'REV TV Canada' is a real dedicated motorsport channel in
+     # this feed (confirmed by hand, real "FIA World Rally Championship" coverage+analysis airing
+     # repeatedly) -- ESPN has no WRC endpoint at all (confirmed against its authoritative racing/leagues
+     # list: only f1/irl/nascar-premier/nascar-secondary/nascar-truck exist). WRC+ is still the only
+     # source for full live stage coverage; this is real linear highlights/review coverage, not that.
+     'channel_re': re.compile(r'tsn|sportsnet|fox\s*sports|rev\s*tv', re.I)},
     # IN (India) added 2026-11-10 for Indian Premier League (see LEAGUES): a real 'Star Sports' channel
     # family exists in this feed (confirmed by hand -- Star Sports 2 Hindi/Tamil/Telugu, Star Sports
     # Khel), the actual Indian cricket rights holder in real life. No programme-level confirmation yet
@@ -450,8 +528,20 @@ XMLTV_SOURCES = [
     # "tennis" added 2026-11-02: Tennis.Channel.HD.us2 is a real channel in this feed with real ATP/
     # WTA programme text ("Center Court", sub-title naming the actual tour/city) -- just never matched
     # by the old regex, nothing to do with the sport lacking coverage here.
+    # "willow" added 2026-11-10: Willow.Cricket.HD.us2 and Willow.2.Xtra.us2 are real channels in this
+    # feed (confirmed by hand), the actual US/Canada cricket rights holder for ICC international cricket
+    # AND the Caribbean Premier League. Programme-level confirmed live, not just channel-existence: real
+    # sub-titles currently in this feed read "New Zealand vs India: 3rd ODI", "England vs Sri Lanka: 1st
+    # T20I", "India vs West Indies - 2nd ODI" -- an exact match to the generic ODI/T20I Series fixtures
+    # this file already tracks (see LEAGUES ids 4801/4979), closing what was previously a total-zero gap
+    # for those two comps.
+    # 'racer' added 2026-11-10 for World Superbike: 'RACER Network' is a real dedicated US motorsports
+    # cable channel in this feed (confirmed by hand, real "2026 FIM World Superbike Championship
+    # Highlights" title) -- ESPN has no WSBK endpoint at all (same authoritative racing/leagues list
+    # check as WRC above). UK1/AU1 already catch WSBK via their existing tnt\s*sports?/fox\s*sports
+    # patterns -- this closes the US gap specifically.
     {'country': 'US', 'url': 'https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz',
-     'channel_re': re.compile(r'espn|fox|cbs\s*sports|nbc|usa|golf|tennis', re.I)},
+     'channel_re': re.compile(r'espn|fox|cbs\s*sports|nbc|usa|golf|tennis|willow|racer', re.I)},
     # CA1 (the obvious sibling to CA2) 404s -- removed, not guessed at; CA2 alone already covers
     # TSN/Sportsnet/Fox Sports Racing, the channels that actually matter here.
 ]
