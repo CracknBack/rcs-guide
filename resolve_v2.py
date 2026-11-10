@@ -1245,6 +1245,24 @@ def espn_channels_tournament(src, fixtures, cache, now_iso):
                 continue
             for name in names:
                 f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
+            # Owner-reported 2026-11-11: TheSportsDB's own strEvent (this fixture's 'label') had this
+            # exact tournament as "Good Good Championship" -- ESPN's real live scoreboard, confirmed by
+            # hand against the same date, calls it "Austin Championship pres. by Compliance Solutions".
+            # Sponsor-renamed tournaments are common on the PGA/European/LIV tours and TheSportsDB's
+            # crowd-sourced name lags behind; ESPN's name is coming from the same live call already being
+            # made for its broadcasts[] data, so this is free -- no extra request, no extra source to
+            # trust, just using the fresher of two names already in hand for exactly the one event
+            # already matched above. Never applied for 'daily'/'teams' kinds (NASCAR, NBA...) -- those
+            # already have real per-fixture home/away team names, nothing to improve.
+            #
+            # The round suffix is preserved, not dropped: unlike PGA Tour (one fixture per whole
+            # tournament), European Tour arrives from TheSportsDB as one fixture PER ROUND ("DP WORLD
+            # TOUR CHAMPIONSHIP DUBAI Round 1", "...Round 2"...), and ESPN's own event name here is for
+            # the whole tournament, no round in it -- a bare overwrite would make all four rounds
+            # identical, losing real information rather than fixing a stale name.
+            if ev.get('name'):
+                m = re.search(r'\b(Round\s*\d+|Final Round)\s*$', f['label'] or '', re.I)
+                f['label'] = ev['name'] + (' ' + m.group(1) if m else '')
 
 
 def espn_channels_daily(src, fixtures, cache, now_iso):
