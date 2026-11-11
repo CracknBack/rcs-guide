@@ -333,7 +333,7 @@ LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 STUDIO_HARD = re.compile(r'golf\s*central|learning\s*cent(er|re)|\bepisode\b|\bthe\s*cut\b|'
                          r'how\s*good\s*is|\btailgate\b|\bface\s*-?off\b|\bfilms\s*presents\b|'
                          r'\b(post|pre)\s*-?\s*(game|match|show)\b|\bthe\s*point\b|\bheaven\b|'
-                         r'\b(now|tonight|central|today)\s*$', re.I)
+                         r'\b(now|tonight|central|today)\s*$|\bretention\b|\bauction\b', re.I)
 
 # identity: "A v B" / "A vs B", optionally prefixed by a round ("Semi Final: Australia v Samoa")
 IDENTITY_RE = re.compile(r'^(?:(?P<round>[^:]{3,40}):\s*)?(?P<a>[^:]{2,48}?)\s+(?:v|vs\.?|versus)\s+(?P<b>[^:(]{2,48})\s*$', re.I)
@@ -539,8 +539,17 @@ def dedupe(events):
     buckets = collections.defaultdict(list)
     for e in events:
         ident = norm_key('%s %s' % (e['home'], e['away'])) if e['home'] and e['away'] else None
+        # A title with no matchup and nothing distinctive in it does NOT identify one broadcast. ESPN
+        # and FS1 both listing "Live: College Basketball" at 00:00 are two different games, and
+        # collapsing them by title+hour produced one card claiming six broadcasters. So those stay
+        # separated by broadcaster, and only the same broadcaster's own variants collapse (which is
+        # what the canonical id and merge_same_channel are for). Tournament sports are exempt: there a
+        # vague title genuinely is the same session, and merge_overlapping handles them deliberately.
+        vague = (not ident and e['sport'] not in TOURNAMENT_SPORTS
+                 and not event_signature(e))
         key = (e['sport'], ident or norm_key(e['title']),
-               None if ident else e['start'].replace(minute=0, second=0, microsecond=0))
+               None if ident else e['start'].replace(minute=0, second=0, microsecond=0),
+               e['bid'] if vague else None)
         buckets[key].append(e)
     out = []
     for key, group in buckets.items():
@@ -618,6 +627,22 @@ def tour_signature(e):
     if e.get('comp'):
         toks |= set(norm_key(e['comp']).split())
     return frozenset(t for t in toks - GENERIC_TOUR_TOKENS if not t.isdigit())
+
+
+# For team sports the league name is not distinguishing either -- "Live NFL" and "Live: College
+# Basketball" name a league, not a game. Anything left after stripping these is something that can
+# actually identify one broadcast ("Rugby League World Cup", "IIHF Women's World Championship").
+GENERIC_EVENT_TOKENS = GENERIC_TOUR_TOKENS | frozenset(
+    'nfl nba wnba nhl mlb nrl nrlw afl aflw bbl wbbl ipl epl mls nbl wnbl ncaa college university '
+    'football basketball hockey ice baseball soccer cricket rugby league union netball darts snooker '
+    'match matches matchday game games fixture week weeks regular season preseason postseason '
+    'twenty t20 t20i odi oneday odis test tests internationals international friendly '
+    'friendlies'.split())
+
+
+def event_signature(e):
+    toks = set(norm_key(e['title']).split())
+    return frozenset(t for t in toks - GENERIC_EVENT_TOKENS if not t.isdigit())
 
 
 def _overlap_frac(a, b):
@@ -946,6 +971,11 @@ def selftest():
               ('Live: NHL Post-Game on TNT', True), ('NFL Tailgate', True),
               ('NHL on TNT Face Off', True), ('NFL Films Presents', True),
               ('PGA Tour Champions Learning Center - Episode 2', True),
+              ('TATA IPL 2027 Player Retention', True),
+              # canary: catches a lost \b in the line above. Written as an escape by a non-raw string
+              # it becomes a literal backspace byte, the regex still compiles, and "now$" silently
+              # starts matching anything ending in -now. This has cost this project time three times.
+              ('Let It Snow', False),
               ('LIVE: Champion of Champions - D2 NS', False),
               ('LIVE: DP World Tour - Tour Championship Round 1', False),
               ('LIVE: NHL - Kraken vs. Hurricanes', False)]
@@ -998,7 +1028,14 @@ def selftest():
     tc = sig('LIVE: DP World Tour - Tour Championship Round 1')
     abu = sig('DP World Tour - Abu Dhabi Championship Final Round')
     iri, lpga = sig('DP World Tour - Irish Open Final Round'), sig('LPGA')
-    for label, cond in [('generic folds into specific', dpw <= tc and dpwg <= tc),
+    # titles that name only a league must not collapse across broadcasters; titles that name a real
+    # competition must
+    esig = lambda t: event_signature({'title': t})
+    for label, cond in [('league-only title is vague', not esig('Live: College Basketball')
+                         and not esig('Live NFL') and not esig('Live: NHL Hockey')),
+                        ('competition title is specific', esig('Rugby League World Cup 2026')
+                         and esig("Live: 2026 IIHF Women's World Championship")),
+                        ('generic folds into specific', dpw <= tc and dpwg <= tc),
                         ('cross-feed generics agree', dpw == dpwg),
                         ('rival tournaments stay apart', not (abu <= iri or iri <= abu)),
                         ('rival tours stay apart', not (lpga <= dpw or dpw <= lpga))]:
@@ -1013,7 +1050,7 @@ def selftest():
     for b in bad:
         print('  SELFTEST FAIL', b)
     print('selftest: %d checks, %d failures'
-          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + 6, len(bad)))
+          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + 8, len(bad)))
     return not bad
 
 
@@ -1023,10 +1060,19 @@ def main():
     ap.add_argument('--out', default='public')
     ap.add_argument('--cache', default='.epgcache')
     ap.add_argument('--guide-v2', default=None, help='guide-v2.json to use as the enrichment layer')
+    # Same reason resolve_v2.py has one: actions/deploy-pages replaces the WHOLE site, so a job that
+    # writes only guides/ and deploys would erase guide-v2.json, the XMLTV guide and every per-site
+    # file. Mirror what is live first, add guides/ to it, then deploy the lot.
+    ap.add_argument('--mirror-base', default='',
+                    help='Pages base URL to mirror the currently-published site from first')
     args = ap.parse_args()
 
     if not selftest():
         sys.exit('classifier/extractor self-test failed -- refusing to publish')
+
+    if args.mirror_base:
+        from resolve_v2 import mirror_published
+        mirror_published(args.mirror_base, args.out)
 
     os.makedirs(args.cache, exist_ok=True)
     now = datetime.datetime.now(datetime.timezone.utc)

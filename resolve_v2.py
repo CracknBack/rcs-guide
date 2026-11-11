@@ -1639,19 +1639,33 @@ def mirror_published(base, dest):
     os.makedirs(dest, exist_ok=True)
 
     def get(url, to):
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
+        # One retry, because every file here is something the deploy would otherwise DELETE from the
+        # live site -- deploy-pages replaces the whole site, so a single transient blip on a mirror
+        # fetch is not a missing file, it is a deletion that lasts until the owning job next runs.
+        last = None
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
+                    data = r.read()
                 with open(to, 'wb') as fh:
-                    fh.write(r.read())
-            return True
-        except Exception as e:
-            print('  mirror: %s not available (%s)' % (url, e), file=sys.stderr)
-            return False
+                    fh.write(data)
+                return True
+            except urllib.error.HTTPError as e:
+                if e.code == 404:       # genuinely not published yet; retrying cannot help
+                    print('  mirror: %s not available (%s)' % (url, e), file=sys.stderr)
+                    return False
+                last = e
+            except Exception as e:
+                last = e
+            if attempt == 0:
+                time.sleep(2)
+        print('  mirror: %s not available (%s)' % (url, last), file=sys.stderr)
+        return False
 
     if not get(base + '/status.json', os.path.join(dest, 'status.json')):
         print('No currently-published guide found -- first run, or the main guide.yml job has not run yet.', file=sys.stderr)
         return
-    for name in ('index.html', 'sports.xml.gz', '.nojekyll', 'tsdb-cache.json'):
+    for name in ('index.html', 'sports.xml.gz', '.nojekyll', 'tsdb-cache.json', 'guide-v2.json'):
         get('%s/%s' % (base, name), os.path.join(dest, name))
     # type.html is a plain static file checked into THIS repo (unlike index.html/sports.xml.gz, which
     # are build_guide.py outputs that only exist on the live site) -- mirroring it from "whatever's
@@ -1677,7 +1691,26 @@ def mirror_published(base, dest):
         os.makedirs(os.path.join(dest, 'sites'), exist_ok=True)
         for s in sites:
             get('%s/sites/%s.xml.gz' % (base, s), os.path.join(dest, 'sites', s + '.xml.gz'))
-    print('Mirrored the currently-published guide (%d per-site files) into %s' % (len(sites), dest))
+
+    # guides/ is published by epg-first.yml on its own slower schedule, and deploy-pages replaces the
+    # whole site -- so without carrying it forward here, THIS job would delete the entire per-sport
+    # event guide from the live site every 15 minutes. The file list is read from the index rather
+    # than hardcoded, so a sport appearing or disappearing needs no change here.
+    guides = 0
+    gdir = os.path.join(dest, 'guides')
+    os.makedirs(gdir, exist_ok=True)
+    if get(base + '/guides/index.json', os.path.join(gdir, 'index.json')):
+        try:
+            with open(os.path.join(gdir, 'index.json'), encoding='utf-8') as fh:
+                files = [s['file'] for s in json.load(fh).get('sports', []) if s.get('file')]
+        except Exception as e:
+            print('  mirror: guides/index.json unreadable (%s)' % e, file=sys.stderr)
+            files = []
+        for rel in files + ['guides/now_next.json']:
+            if get('%s/%s' % (base, rel), os.path.join(dest, *rel.split('/'))):
+                guides += 1
+    print('Mirrored the currently-published guide (%d per-site files, %d guides/ files) into %s'
+          % (len(sites), guides, dest))
 
 
 if __name__ == '__main__':

@@ -1,0 +1,80 @@
+name: Build guides (EPG/broadcaster-first events)
+
+# The third publishing job, and the slowest-moving of the three. guide.yml mirrors and parses a dozen+
+# XMLTV sources (20-28 min); guide-v2.yml calls two small JSON APIs every 15 minutes for match-day
+# freshness. This one downloads the nine epgshare01 feeds (~25 MB gzipped, ~290 MB parsed) and turns
+# the broadcasters' own schedules into per-sport event files, which is where channel, start and stop
+# are guaranteed rather than inferred.
+#
+# Hourly on purpose. A broadcaster's published schedule for the next 8 days does not change
+# minute-to-minute, and guides/now_next.json carries real start/end timestamps so the client works out
+# what is on air right now from the data it already has -- it does not need a fresh deploy to do that.
+# Running this as often as guide-v2.yml would mean ~2.4 GB/day of downloads from epgshare01 for data
+# that changed in neither of the two preceding hours.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Deliberately the SAME group as guide-v2.yml. deploy-pages replaces the whole site, so two jobs
+# deploying at once can race: the loser mirrors a site that does not yet contain the winner's output
+# and then publishes that stale copy over it. Sharing the group makes them take turns instead.
+concurrency:
+  group: red-carpet-guide-v2
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build guides/ (mirrors the published site first, then adds the per-sport files)
+        run: |
+          python3 epg_first.py --out public --cache .epgcache \
+            --mirror-base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+
+      # Fail loudly rather than deploying a half-built site: epg_first.py refuses to publish if its
+      # classifier self-test regresses, and a deploy of an empty guides/ would look like success while
+      # emptying the Event Hub.
+      - name: Verify the output before deploying
+        run: |
+          test -s public/guides/index.json || { echo "guides/index.json missing or empty"; exit 1; }
+          test -s public/guide-v2.json    || { echo "guide-v2.json was not mirrored -- refusing to deploy over it"; exit 1; }
+          python3 - <<'PY'
+          import json, sys
+          ix = json.load(open('public/guides/index.json', encoding='utf-8'))
+          sports, events = ix.get('sports', []), ix.get('events', [])
+          print('sports files: %d   index events (live + next 24h): %d' % (len(sports), len(events)))
+          for s in sports:
+              print('  %-14s %5d events' % (s['id'], s['events']))
+          if len(sports) < 8:
+              sys.exit('only %d sport files -- expected at least 8, refusing to deploy' % len(sports))
+          PY
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
