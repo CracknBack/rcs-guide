@@ -40,6 +40,7 @@ XMLTV_BASE = 'https://epgshare01.online/epgshare01/epg_ripper_%s.xml.gz'
 # -- IE1 turned out to carry more sport than any other feed in the dry run.
 FEEDS = ['AU1', 'UK1', 'US2', 'CA2', 'NZ1', 'IN1', 'ZA1', 'IE1', 'BEIN1']
 HORIZON_DAYS = 8
+INDEX_AHEAD_HOURS = 24   # how far index.json's cross-sport "All Sports" view reaches
 
 # ---------------------------------------------------------------------------------------------
 # Canonical broadcasters
@@ -322,8 +323,56 @@ SHOW_RE = re.compile(r'\bhighlights?\b|\bclassic\b|\brewind\b|\breview\b|\bmagaz
                      r'\bfrom\s+(19|20)\d{2}\b|\b(19|20)\d{2}\s+(final|classic)\b', re.I)
 LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 
+# Named studio strands that a "LIVE" prefix must NOT rescue. The live_hint exemption above exists so a
+# genuine short session ("LIVE: Champion of Champions - D2 NS") survives the filler filter, but US
+# networks brand their studio output as live too: "Live: Golf Central", "Live: MLB Now", "Live: MLB
+# Tonight", "Live: NHL Post-Game on TNT", "NFL Tailgate", "NHL on TNT Face Off", "NFL Films Presents",
+# "PGA Tour Champions Learning Center - Episode 2". These were surviving as events AND, once the
+# overlap merge landed, accumulating broadcasters -- a studio show on four channels looks exactly like
+# a well-covered fixture.
+STUDIO_HARD = re.compile(r'golf\s*central|learning\s*cent(er|re)|\bepisode\b|\bthe\s*cut\b|'
+                         r'how\s*good\s*is|\btailgate\b|\bface\s*-?off\b|\bfilms\s*presents\b|'
+                         r'\b(post|pre)\s*-?\s*(game|match|show)\b|\bthe\s*point\b|\bheaven\b|'
+                         r'\b(now|tonight|central|today)\s*$', re.I)
+
 # identity: "A v B" / "A vs B", optionally prefixed by a round ("Semi Final: Australia v Samoa")
 IDENTITY_RE = re.compile(r'^(?:(?P<round>[^:]{3,40}):\s*)?(?P<a>[^:]{2,48}?)\s+(?:v|vs\.?|versus)\s+(?P<b>[^:(]{2,48})\s*$', re.I)
+# North American feeds never write "v"/"vs" -- they write "Away at Home" or "Away @ Home"
+# ("Kansas City Chiefs at Buffalo Bills"), which is why US2/CA2 produced zero matchups.
+# "at" is a real English word, so it is only trusted under three guards together: a US/CA row, one of
+# the team sports that actually uses the convention, and both sides starting capitalised. Without the
+# sport guard "Golf at Pebble Beach" and "NASCAR at Phoenix" parse as matchups; without the
+# capitalisation guard, so does "Live at the Apollo".
+AT_IDENTITY_RE = re.compile(r'^(?:(?P<round>[^:]{3,40}):\s*)?(?P<a>[^:@]{2,48}?)\s+at\s+(?P<b>[^:(@]{2,48})\s*$', re.I)
+AMP_IDENTITY_RE = re.compile(r'^(?:(?P<round>[^:]{3,40}):\s*)?(?P<a>[^:@]{2,48}?)\s*@\s*(?P<b>[^:(@]{2,48})\s*$')
+# Soccer is deliberately NOT here: it never uses the "at" notation, and including it would let
+# "Soccer at Wembley" through both other guards.
+AT_SPORTS = {'am_football', 'basketball', 'ice_hockey', 'baseball'}
+AT_COUNTRIES = {'US', 'CA'}
+SIDE_CAPS = re.compile(r'^[A-Z0-9]')
+# a side that is just a sport or a filler noun is a venue/billing line, not a team: "Baseball at
+# Fenway", "Live at the Apollo", "Hockey at the Olympics"
+SIDE_GENERIC = re.compile(r'^(golf|tennis|soccer|football|baseball|basketball|hockey|ice\s*hockey|'
+                          r'nascar|racing|cricket|rugby|boxing|darts|live|highlights|action|'
+                          r'coverage|game|match)$', re.I)
+
+# Where US matchups ACTUALLY live. Measured on US2+CA2: of 426 rows naming NFL/NBA/NHL/MLB, only 40
+# have a <sub-title> at all and just 7 of those hold a matchup -- but 425 have a <desc>, and ~87 state
+# the fixture in prose: "The Buffalo Sabres host the Tampa Bay Lightning in NHL regular-season play".
+# Anchored at the start of the first sentence on purpose: unanchored, "Ant and Dec host Saturday Night
+# Takeaway" parses as a fixture. No re.I -- the capitalisation IS the team-name signal.
+_TEAM = r"[A-Z][\w.&'-]*(?:\s+(?:of\s+|de\s+)?[A-Z][\w.&'-]*){0,3}"
+DESC_PROSE = [
+    # "A hosts B" -> A is at home
+    (re.compile(r"^(?:[Tt]he\s+)?(" + _TEAM + r")\s+(?:hosts?|welcomes?|entertains?)\s+"
+                r"(?:the\s+)?(" + _TEAM + r")"), False),
+    # "A visits B" -> B is at home, so the sides swap
+    (re.compile(r"^(?:[Tt]he\s+)?(" + _TEAM + r")\s+(?:visits?|travels?\s+to|heads?\s+to)\s+"
+                r"(?:the\s+)?(" + _TEAM + r")"), True),
+    # neutral verbs carry no venue information; keep the stated order
+    (re.compile(r"^(?:[Tt]he\s+)?(" + _TEAM + r")\s+(?:takes?\s+on|faces?|meets?|battles?)\s+"
+                r"(?:the\s+)?(" + _TEAM + r")"), False),
+]
 JUNK_SIDE = re.compile(r'^(tba|tbc|tbd|the|a|\d+)$', re.I)
 
 
@@ -334,20 +383,39 @@ def classify_sport(title):
     return None
 
 
-def extract_identity(sub, desc):
+def extract_identity(sub, desc, sport=None, country=None):
     """Teams/line-up from <sub-title>, then the first sentence of <desc>. Only ever called after the
     sport is already decided -- see the two-job rule."""
-    for text in (sub or '', (desc or '').split('.')[0]):
+    # (regex, enforce capitalised/non-generic sides, swap sides so home comes first)
+    forms = [(IDENTITY_RE, False, False)]
+    if sport in AT_SPORTS:
+        # "Away @ Home" / "Away at Home": the SECOND side is the home team, so these swap.
+        forms.append((AMP_IDENTITY_RE, True, True))
+        if country in AT_COUNTRIES:
+            forms.append((AT_IDENTITY_RE, True, True))
+    for n, (text, is_desc) in enumerate(((sub or '', False), ((desc or '').split('.')[0], True))):
         t = re.sub(r'\s+', ' ', text).strip()
         if not t:
             continue
-        m = IDENTITY_RE.match(t)
-        if not m:
-            continue
-        a, b = m.group('a').strip(), m.group('b').strip()
-        if JUNK_SIDE.match(a) or JUNK_SIDE.match(b):
-            continue
-        return a, b, (m.group('round') or '').strip() or None
+        trials = list(forms)
+        if is_desc and sport not in TOURNAMENT_SPORTS:
+            trials += [(rx, True, swap) for rx, swap in DESC_PROSE]
+        for rx, strict, swap in trials:
+            m = rx.match(t)
+            if not m:
+                continue
+            g = m.groupdict()
+            a = (g.get('a') or m.group(1)).strip()
+            b = (g.get('b') or m.group(2)).strip()
+            if JUNK_SIDE.match(a) or JUNK_SIDE.match(b):
+                continue
+            if strict and not (SIDE_CAPS.match(a) and SIDE_CAPS.match(b)):
+                continue
+            if strict and (SIDE_GENERIC.match(a) or SIDE_GENERIC.match(b)):
+                continue
+            if swap:
+                a, b = b, a
+            return a, b, (g.get('round') or '').strip() or None
     return None, None, None
 
 
@@ -441,13 +509,16 @@ def build_events(raw):
         live_hint = bool(LIVE_HINT.search(title)) or bool(LIVE_HINT.search(p['sub']))
         # duration as a combined signal, never alone: a short programme that also looks like a studio
         # show is filler; a short programme that says LIVE is a real session.
+        if STUDIO_HARD.search(title):
+            rej['named studio strand'] += 1
+            continue
         if looks_show and not live_hint:
             rej['studio/filler title'] += 1
             continue
         if mins < 40 and looks_show:
             rej['short filler'] += 1
             continue
-        a, b, rnd = extract_identity(p['sub'], p['desc'])
+        a, b, rnd = extract_identity(p['sub'], p['desc'], sport, p['country'])
         kept.append({
             'sport': sport, 'title': title, 'sub': p['sub'] or None,
             'home': a, 'away': b, 'round': rnd,
@@ -521,6 +592,100 @@ def merge_same_channel(events):
                     a['home'], a['away'], a['round'] = b['home'], b['away'], b.get('round')
                 if len(b['title']) > len(a['title']) and not (a['home'] and a['away']):
                     a['title'] = b['title']
+                absorbed.add(id(b))
+    return [e for e in events if id(e) not in absorbed]
+
+
+# Sports whose events are sessions rather than head-to-head fixtures. Two networks covering the same
+# round start at different minutes (Sky Sports Golf at 08:00, Fox Sports 503 at 08:30), so exact-hour
+# dedupe leaves two cards for one tournament.
+TOURNAMENT_SPORTS = {'golf', 'motorsport', 'tennis', 'cycling', 'snooker', 'darts', 'racing'}
+OVERLAP_MIN = 0.5
+
+# Words that say nothing about WHICH tournament this is. Everything left after stripping them is the
+# distinctive signature: "DP World Tour" -> {dp, world}, "LIVE: DP World Tour - Tour Championship
+# Round 1" -> {dp, world, championship}, "Irish Open Final Round" -> {irish, open}, "LPGA" -> {lpga}.
+# Tour identifiers (dp, world, lpga, atp, wta) are deliberately NOT generic -- they are the only thing
+# separating one simultaneous tour from another.
+GENERIC_TOUR_TOKENS = frozenset(
+    'live lve golf tennis cycling motorsport snooker darts racing tour tours round rounds day days '
+    'session sessions morning afternoon evening night final finals semi quarter highlights coverage '
+    'the and a of r1 r2 r3 r4 d1 d2 d3 d4 mens womens womans'.split())
+
+
+def tour_signature(e):
+    toks = set(norm_key(e['title']).split())
+    if e.get('comp'):
+        toks |= set(norm_key(e['comp']).split())
+    return frozenset(t for t in toks - GENERIC_TOUR_TOKENS if not t.isdigit())
+
+
+def _overlap_frac(a, b):
+    """Overlap as a fraction of the SHORTER window. Measuring against the shorter one is what makes a
+    30-minute offset on a 4-hour broadcast read as the same event (0.88) while a 4-hour golf round and
+    the 28-hour span of the whole tournament do not (a naive min(start)-max(end) rule welds a Thursday
+    round to a Friday one -- that is why this is a threshold and not a span union)."""
+    lo, hi = max(a['start'], b['start']), min(a['stop'], b['stop'])
+    ov = (hi - lo).total_seconds()
+    if ov <= 0:
+        return 0.0
+    shortest = min((a['stop'] - a['start']).total_seconds(), (b['stop'] - b['start']).total_seconds())
+    return 0.0 if shortest <= 0 else ov / shortest
+
+
+def _absorb(a, b):
+    a['_all'].extend(b['_all'])
+    a['start'] = min(a['start'], b['start'])
+    a['stop'] = max(a['stop'], b['stop'])
+    if not (a['home'] and a['away']) and b['home'] and b['away']:
+        a['home'], a['away'], a['round'] = b['home'], b['away'], b.get('round')
+    if not a.get('comp') and b.get('comp'):
+        a['comp'] = b['comp']
+    if len(b['title']) > len(a['title']) and not (a['home'] and a['away']):
+        a['title'] = b['title']
+
+
+def merge_overlapping(events):
+    """Third pass, across DIFFERENT broadcasters: entries in the same sport and competition/session
+    whose windows overlap by more than half the shorter one are one event. Grouped narrowly on
+    purpose -- a tournament sport keys on its competition name (or its own title when unenriched) so
+    two different tours running simultaneously on opposite sides of the world stay separate, and a
+    team sport keys on the matchup so only genuinely identical fixtures with offset pre-show padding
+    collapse."""
+    groups = collections.defaultdict(list)
+    for e in events:
+        if e['home'] and e['away']:
+            ha, aa = norm_key(e['home']).split(), norm_key(e['away']).split()
+            if ha and aa:
+                groups[(e['sport'], frozenset([ha[0], aa[0]]))].append(e)
+        elif e['sport'] in TOURNAMENT_SPORTS:
+            # one bucket per sport, because the titles are exactly what disagree -- the same round is
+            # "DP World Tour" on Sky Sport NZ, "DP World Tour Golf" on Sony Ten and "LIVE: DP World
+            # Tour - Tour Championship Round 1" on Fox 505. The signature test below is what keeps
+            # two different tours running at the same hour apart.
+            groups[(e['sport'],)].append(e)
+    absorbed = set()
+    for key, g in groups.items():
+        g.sort(key=lambda e: e['start'])
+        tour = len(key) == 1
+        sig = {id(e): tour_signature(e) for e in g} if tour else {}
+        for i, a in enumerate(g):
+            if id(a) in absorbed:
+                continue
+            for b in g[i + 1:]:
+                if id(b) in absorbed:
+                    continue
+                if _overlap_frac(a, b) <= OVERLAP_MIN:
+                    continue
+                if tour:
+                    sa, sb = sig[id(a)], sig[id(b)]
+                    # a vaguer title folding into a more specific one is the same broadcast; two
+                    # titles with competing specifics ({irish,open} vs {abu,dhabi}) are not.
+                    if not (sa <= sb or sb <= sa):
+                        continue
+                _absorb(a, b)
+                if tour:
+                    sig[id(a)] = sig[id(a)] | sig[id(b)]
                 absorbed.add(id(b))
     return [e for e in events if id(e) not in absorbed]
 
@@ -604,6 +769,80 @@ def enrich(events, fixtures):
     return hits
 
 
+# Fixture channel rows carry a plain name plus a country ("Sky Sports NFL" / "UK"), so they can be put
+# through the same canonical collapse the EPG side uses and compared as ids.
+COUNTRY_SCOPE = {'UK': ('uk:',), 'US': ('us:',), 'AU': ('au:',), 'CA': ('ca:',), 'NZ': ('nz:',),
+                 'IN': ('in:',), 'ZA': ('za:',), 'IE': ('ie:', 'uk:'), 'QA': ('mena:',),
+                 'AE': ('mena:',), 'SA': ('mena:',)}
+JOIN_WINDOW_S = 20 * 60
+
+
+def canonical_from_fixture(name, country):
+    base = re.sub(r'\s+', ' ', re.sub(r'[._]+', ' ', REGION_RE.sub(' ', name or ''))).strip()
+    scope = COUNTRY_SCOPE.get((country or '').upper())
+    if not scope:
+        return None
+    for cid, cc, cname, rx in CANON_RE:
+        if cid.startswith(scope) and rx.search(base):
+            return cid
+    return None
+
+
+def load_fixture_slots(guide_v2_path):
+    """Fixtures indexed by competition and kickoff, each carrying the canonical broadcaster ids it is
+    listed on. Used to put a matchup on EPG rows whose title is just the league name ("NFL")."""
+    slots = collections.defaultdict(list)
+    try:
+        with open(guide_v2_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return slots
+    for ev in data.get('events', []):
+        comp, h, a = ev.get('comp'), ev.get('home'), ev.get('away')
+        if not (comp and h and a):
+            continue
+        try:
+            kick = datetime.datetime.fromisoformat(ev['kick'])
+        except Exception:
+            continue
+        bids = {b for b in (canonical_from_fixture(c.get('channel'), c.get('country'))
+                            for c in ev.get('channels') or []) if b}
+        slots[comp].append({'home': h, 'away': a, 'kick': kick,
+                            'round': ev.get('round'), 'bids': bids})
+    return slots
+
+
+def join_fixture_matchups(events, slots):
+    """Put a matchup on an EPG row that has a competition but no teams, from the fixture kicking off in
+    the same slot. Only when it is unambiguous, which is the whole point: 70% of NFL fixtures and
+    around half of NHL/NBA share a +/-20 minute window with another game, so "the fixture in that
+    slot" is usually four fixtures. Taking the first would confidently mislabel the majority of US
+    sport -- worse than leaving the title as plain "NFL". So: accept a lone fixture in the window, or
+    disambiguate a crowded window by which fixture is listed on THIS broadcaster."""
+    hits = ambiguous = 0
+    for e in events:
+        if (e['home'] and e['away']) or not e.get('comp'):
+            continue
+        cands = [f for f in slots.get(e['comp'], ())
+                 if abs((f['kick'] - e['start']).total_seconds()) <= JOIN_WINDOW_S]
+        if not cands:
+            continue
+        pick = cands[0] if len(cands) == 1 else None
+        if pick is None:
+            bids = {x['bid'] for x in e['_all']}
+            on_air = [f for f in cands if f['bids'] & bids]
+            if len(on_air) == 1:
+                pick = on_air[0]
+        if pick is None:
+            ambiguous += 1
+            continue
+        e['home'], e['away'] = pick['home'], pick['away']
+        if not e.get('round') and pick.get('round'):
+            e['round'] = pick['round']
+        hits += 1
+    return hits, ambiguous
+
+
 def iso(dt):
     return dt.astimezone(datetime.timezone.utc).isoformat()
 
@@ -616,15 +855,31 @@ def write_outputs(out_dir, events, channels, now):
     for e in events:
         by_sport[e['sport']].append(e)
 
-    index = {'generated': gen, 'horizon_days': HORIZON_DAYS, 'sports': [], 'live': []}
+    # index.json is the "All Sports" landing view, not just a table of contents: it carries every
+    # currently-live event plus the next 24 hours across all sports, so opening the Event Hub renders
+    # from one request instead of downloading 16 sport files. Measured on this data set: 550 events,
+    # 110.7 KB raw but 9.8 KB gzipped (Pages serves gzip), against 261 KB for the four biggest sport
+    # files alone. Selecting a sport chip still lazily fetches that sport's full 8-day file.
+    cut = now + datetime.timedelta(hours=INDEX_AHEAD_HOURS)
+    index = {'generated': gen, 'horizon_days': HORIZON_DAYS, 'index_ahead_hours': INDEX_AHEAD_HOURS,
+             'sports': [], 'live': [], 'events': []}
     for sport, evs in sorted(by_sport.items(), key=lambda kv: -len(kv[1])):
         evs.sort(key=lambda e: e['start'])
         live = [e for e in evs if e['start'] <= now <= e['stop']]
         payload = {'generated': gen, 'sport': sport, 'label': SPORT_LABEL.get(sport, sport),
                    'shape': SPORT_SHAPE.get(sport, 'session'), 'events': []}
         for i, e in enumerate(evs):
+            eid = '%s:%d' % (sport, i)
+            if e['start'] <= cut and e['stop'] > now:
+                index['events'].append({
+                    'id': eid, 'sport': sport, 'title': e['title'],
+                    'home': e['home'], 'away': e['away'], 'comp': e.get('comp'),
+                    'start': iso(e['start']), 'end': iso(e['stop']),
+                    'shape': SPORT_SHAPE.get(sport, 'session'),
+                    'broadcaster_ids': sorted({x['bid'] for x in e['_all']}),
+                })
             payload['events'].append({
-                'id': '%s:%d' % (sport, i),
+                'id': eid,
                 'title': e['title'], 'sub': e['sub'],
                 'home': e['home'], 'away': e['away'], 'round': e.get('round'),
                 'comp': e.get('comp'),
@@ -686,6 +941,17 @@ def selftest():
              ('LIVE: ODI - AUS v ENG G1', 'cricket'),
              ('NFL', 'am_football'), ('DP World Tour Golf', 'golf')]
     bad = [(t, classify_sport(t), e) for t, e in cases if classify_sport(t) != e]
+    # a LIVE prefix must not rescue a named studio strand, and must still rescue a real short session
+    studio = [('Live: Golf Central', True), ('Live: MLB Now', True), ('Live: MLB Tonight', True),
+              ('Live: NHL Post-Game on TNT', True), ('NFL Tailgate', True),
+              ('NHL on TNT Face Off', True), ('NFL Films Presents', True),
+              ('PGA Tour Champions Learning Center - Episode 2', True),
+              ('LIVE: Champion of Champions - D2 NS', False),
+              ('LIVE: DP World Tour - Tour Championship Round 1', False),
+              ('LIVE: NHL - Kraken vs. Hurricanes', False)]
+    for t, exp in studio:
+        if bool(STUDIO_HARD.search(t)) != exp:
+            bad.append(('STUDIO_HARD', t, not exp))
     idc = [(('Melbourne Stars v Brisbane Heat', ''), ('Melbourne Stars', 'Brisbane Heat')),
            (('Semi Final: Australia v Samoa', ''), ('Australia', 'Samoa')),
            (('', 'The Stars challenge the Heat. More text'), (None, None)),
@@ -694,6 +960,50 @@ def selftest():
         a, b, _ = extract_identity(sub, desc)
         if (a, b) != exp:
             bad.append(((sub, desc), (a, b), exp))
+    # the "at"/"@" form, plus the false positives its three guards exist to stop
+    # "Away at Home" -> the home side is returned first, hence the reversed expectations
+    atc = [('Kansas City Chiefs at Buffalo Bills', 'am_football', 'US',
+            ('Buffalo Bills', 'Kansas City Chiefs')),
+           ('Boston Celtics @ Miami Heat', 'basketball', 'US', ('Miami Heat', 'Boston Celtics')),
+           ('Toronto Maple Leafs at Montreal Canadiens', 'ice_hockey', 'CA',
+            ('Montreal Canadiens', 'Toronto Maple Leafs')),
+           ('Golf at Pebble Beach', 'golf', 'US', (None, None)),          # wrong sport
+           ('NASCAR at Phoenix', 'motorsport', 'US', (None, None)),       # wrong sport
+           ('Live at the Apollo', 'basketball', 'US', (None, None)),      # side not capitalised
+           ('Baseball at Fenway', 'baseball', 'US', (None, None)),        # generic side
+           ('Soccer at Wembley', 'soccer', 'UK', (None, None)),           # soccer excluded outright
+           ('Kansas City Chiefs at Buffalo Bills', 'am_football', 'AU', (None, None))]  # "at" is US/CA only
+    for sub, sport, cc, exp in atc:
+        a, b, _ = extract_identity(sub, None, sport, cc)
+        if (a, b) != exp:
+            bad.append((sub, sport, cc, (a, b), exp))
+    # prose matchups in <desc>, which is where US/CA feeds actually put them
+    dsc = [('The Buffalo Sabres host the Tampa Bay Lightning in NHL regular-season play at KeyBank Center.',
+            'ice_hockey', ('Buffalo Sabres', 'Tampa Bay Lightning')),
+           ('The Chicago Bulls visit the New York Knicks.', 'basketball',
+            ('New York Knicks', 'Chicago Bulls')),                  # visitor named first -> swapped
+           ('Liverpool face Arsenal in the league.', 'soccer', ('Liverpool', 'Arsenal')),
+           ('From T-Mobile Arena in Las Vegas.', 'ice_hockey', (None, None)),
+           ('Ant and Dec host Saturday Night Takeaway.', 'soccer', (None, None)),   # not sentence-initial
+           ('Anson Carter and Liam McHugh present pregame coverage.', 'ice_hockey', (None, None)),
+           ('Rory McIlroy meets the field at Pebble Beach.', 'golf', (None, None))]  # tournament sport
+    for desc, sport, exp in dsc:
+        a, b, _ = extract_identity(None, desc, sport, 'US')
+        if (a, b) != exp:
+            bad.append((desc[:40], sport, (a, b), exp))
+    # tournament signatures: vaguer titles must be a subset of the specific one they belong to, and
+    # two tours running the same hour must not be comparable in either direction
+    sig = lambda t: tour_signature({'title': t, 'comp': None})
+    dpw, dpwg = sig('DP World Tour'), sig('DP World Tour Golf')
+    tc = sig('LIVE: DP World Tour - Tour Championship Round 1')
+    abu = sig('DP World Tour - Abu Dhabi Championship Final Round')
+    iri, lpga = sig('DP World Tour - Irish Open Final Round'), sig('LPGA')
+    for label, cond in [('generic folds into specific', dpw <= tc and dpwg <= tc),
+                        ('cross-feed generics agree', dpw == dpwg),
+                        ('rival tournaments stay apart', not (abu <= iri or iri <= abu)),
+                        ('rival tours stay apart', not (lpga <= dpw or dpw <= lpga))]:
+        if not cond:
+            bad.append(('tour_signature', label))
     cid = canonical_id('AU1', '7mate Perth')
     if not cid or cid[0] != 'au:7mate':
         bad.append(('7mate Perth', cid, 'au:7mate'))
@@ -702,7 +1012,8 @@ def selftest():
         bad.append(('BEIN1 beIN Sports 1', cid, 'mena:*'))
     for b in bad:
         print('  SELFTEST FAIL', b)
-    print('selftest: %d checks, %d failures' % (len(cases) + len(idc) + 2, len(bad)))
+    print('selftest: %d checks, %d failures'
+          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + 6, len(bad)))
     return not bad
 
 
@@ -731,8 +1042,18 @@ def main():
     kept, rej = build_events(raw_all)
     before = len(kept)
     events = dedupe(kept)
-    fixtures = load_fixture_enrichment(args.guide_v2 or os.path.join(args.out, 'guide-v2.json'))
+    gv2 = args.guide_v2 or os.path.join(args.out, 'guide-v2.json')
+    fixtures = load_fixture_enrichment(gv2)
     hits = enrich(events, fixtures)
+
+    # competition names must be settled before the overlap merge (it groups on them) and before the
+    # slot join (it looks the competition up in the fixture list).
+    after_enrich = len(events)
+    events = merge_overlapping(events)
+    slots = load_fixture_slots(gv2)
+    joined, ambiguous = join_fixture_matchups(events, slots)
+    # second pass: rows that only just acquired a matchup can now collapse against each other
+    events = merge_overlapping(events)
 
     raw_by_bid = collections.defaultdict(list)
     for p in raw_all:
@@ -745,6 +1066,12 @@ def main():
     print('kept %d -> %d after dedupe (%d%% were duplicate broadcasts)'
           % (before, len(events), 0 if not before else 100 - 100 * len(events) // before))
     print('enriched with a fixture competition name: %d' % hits)
+    print('overlapping broadcasts merged across networks: %d (%d -> %d)'
+          % (after_enrich - len(events), after_enrich, len(events)))
+    print('matchups joined from fixture slots: %d   left alone as ambiguous: %d' % (joined, ambiguous))
+    with_matchup = sum(1 for e in events if e['home'] and e['away'])
+    print('events with a matchup: %d/%d (%d%%)'
+          % (with_matchup, len(events), 100 * with_matchup // max(1, len(events))))
     print('canonical broadcasters seen: %d   now_next entries: %d' % (len(channels), len(nn['channels'])))
 
 
