@@ -306,21 +306,36 @@ DEDICATED = re.compile(r'^(au:(fox|kayo|stan|optus|espn|bein|sky_racing|racing)|
                        r'ca:(tsn|sportsnet|rds|tva|rev)|nz:sky|in:(star|sony|dd)|za:supersport|'
                        r'ie:premier|mena:)')
 
-# Studio/filler programming that is not a watchable event. Duration is a SIGNAL here, never a cutoff
-# on its own -- a hard "< 40 minutes" rule would also discard genuine short sessions (qualifying,
-# a darts session, a criterium).
+# Studio/filler programming that is not a watchable event. Checked against the TITLE only -- the
+# two-job rule (title/category decides sport, sub-title/desc decides matchup identity) holds here too,
+# because a real match's own description can legitimately contain words like "goals" or "show"
+# ("a five-goal thriller"), and title-only is what keeps this from rejecting real fixtures.
+# Duration is a SIGNAL here, never a cutoff on its own -- a hard "< 40 minutes" rule would also
+# discard genuine short sessions (qualifying, a darts session, a criterium).
 SHOW_RE = re.compile(r'\bhighlights?\b|\bclassic\b|\brewind\b|\breview\b|\bmagazine\b|\bpreviews?\b|'
                      r'press\s*conference|\bnews\b|documentary|\bbest\s*of\b|\btop\s*\d+\b|countdown|'
                      r'\banalysis\b|\bweekly\b|round\s*-?up|\bthis\s*week\b|\bbuild-?up\b|\bverdict\b|'
                      r'\bdaily\b|\bshow\b|\bextra\s*time\b|\bovertime\b|\btonight\b|\bwrap\b|\bmini\b|'
-                     r'\bupcoming\b|\bcoming\s*up\b|\bgoals\b|\btalk\b|\bdebate\b|'
-                     # archive/nostalgia strands. <previously-shown> only catches what the broadcaster
-                     # bothered to tag, and these are not tagged: confirmed real leaks were "UFC Fight
-                     # Flashback", "Darts Gold: Priestley v Wilson" (a 1990s match), "Legends of Darts",
-                     # "2000's Greatest Games" and "Golf Academy" (instructional, not an event).
-                     r'\bflashback\b|\blook\s*back\b|\bvault\b|\bretro\b|\bgreatest\b|\blegends?\b|'
-                     r'\bacademy\b|\bmasterclass\b|\bgold\b|\bencore\b|\barchive\b|\bre-?run\b|'
-                     r'\bfrom\s+(19|20)\d{2}\b|\b(19|20)\d{2}\s+(final|classic)\b', re.I)
+                     r'\bupcoming\b|\bcoming\s*up\b|\bgoals\b|\btalk\b|\bdebate\b', re.I)
+
+# Archive/nostalgia strands are a DIFFERENT check from the above, and deliberately read title+sub+desc
+# together rather than title alone. Confirmed live and real: broadcasters routinely put the archive
+# giveaway in the DESCRIPTION, not the title -- "Bundesliga Highlights" / desc "Matchday highlights
+# from the latest round of fixtures from the 2026-2027 Bundesliga season", "EFL Cup Best Goals:
+# 2023/24" / desc mentioning "this season's Carabao Cup". A title-only check missed all of these:
+# confirmed live on 2026-11-11, 41 of 42 programmes published as "Champions League" fixtures were
+# archive rewind clips ("Leeds United v Rangers from the 1992/93 season", "Chelsea v Liverpool from
+# the 2008/09 season") on a single channel each, with exactly one real live match underneath them.
+# This is an authenticity check, not a sport-classification one, so reading the prose here doesn't
+# violate the two-job rule the same way it would for SHOW_RE or classify_sport.
+ARCHIVE_RE = re.compile(r'\bflashback\b|\blook\s*back\b|\bvault\b|\bretro\b|\bgreatest\b|\blegends?\b|'
+                       r'\bacademy\b|\bmasterclass\b|\bgold\b|\bencore\b|\barchive\b|\bre-?run\b|'
+                       r'\bbest\s*goals\b|'
+                       # these four need a year attached (unlike bare "goals"/"classic" above, which
+                       # a real match description can say honestly) -- a year number next to the word
+                       # is what makes it unambiguous.
+                       r'\bfrom\s+(the\s+)?(19|20)\d{2}\b|\b(19|20)\d{2}\s*/\s*(19|20)?\d{2}\b|'
+                       r'\b(19|20)\d{2}\s+(final|classic|season)\b|\blatest\s+round\s+of\s+fixtures\b', re.I)
 LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 
 # Named studio strands that a "LIVE" prefix must NOT rescue. The live_hint exemption above exists so a
@@ -511,6 +526,13 @@ def build_events(raw):
         # show is filler; a short programme that says LIVE is a real session.
         if STUDIO_HARD.search(title):
             rej['named studio strand'] += 1
+            continue
+        # Archive check reads title+sub+desc together (see ARCHIVE_RE's own comment for why) and is
+        # NOT exempted by live_hint -- a "LIVE" prefix on a rebroadcast is the broadcaster's own
+        # labelling error, not evidence this is actually happening now, and letting it through was
+        # exactly how "Leeds United v Rangers from the 1992/93 season" reached the published guide.
+        if ARCHIVE_RE.search(title) or ARCHIVE_RE.search(p['sub'] or '') or ARCHIVE_RE.search(p['desc'] or ''):
+            rej['archive/nostalgia clip'] += 1
             continue
         if looks_show and not live_hint:
             rej['studio/filler title'] += 1
@@ -771,13 +793,85 @@ def comp_name_index():
     return out
 
 
-def enrich(events, fixtures):
-    hits = 0
-    for comp_rx, comp, sports in comp_name_index():
-        for e in events:
-            if not e.get('comp') and e['sport'] in sports and comp_rx.search(e['title']):
-                e['comp'] = comp
-                hits += 1
+# How far from a real fixture's kickoff a broadcast can sit and still plausibly BE that match --
+# pre-match build-up, the match itself, post-match analysis, and ordinary EPG/timezone slop. Wide
+# enough to cover genuine same-day coverage, nowhere near wide enough to cover "from the 1992/93
+# season": that is hours or days off, this window is not.
+COMP_GATE_WINDOW_HOURS = 4
+
+# A comp only counts as having ground truth to gate against when BOTH hold:
+#  - at least one tracked kickoff is still in the future (a comp whose only data is last week's
+#    finished matches is exactly as blind to "is anything on right now" as having zero data -- and
+#    gating on it is actively worse than not gating, because it looks like evidence and isn't).
+#    Confirmed live: FA Cup had 15 kickoffs, all of them past, Bundesliga/La Liga/Ligue 1 had exactly
+#    1 each -- gating on that is what collapsed soccer's real count, not archive clips.
+#  - at least this many FUTURE kickoffs (3), so a sport whose fixture coverage is a handful of
+#    marquee dates (UFC: 2 tracked future cards; Boxing: 2; BKFC: 0) doesn't get treated as a
+#    complete schedule. Below this bar, "no fixture nearby" is far more likely our own coverage gap
+#    than evidence the broadcast is fake.
+COMP_GATE_MIN_FUTURE = 3
+
+# Sports whose own events don't carry the same kind of kickoff: a tournament's `kick` is one round's
+# tee time or session start, and real EPG coverage of a DIFFERENT round of the SAME live tournament can
+# legitimately sit many hours away from it. Combat sports are excluded for a different reason -- our
+# own fixture tracking there is a small curated set of marquee cards (ausportguide is the only real
+# source), never comprehensive, so "no tracked card nearby" is routinely just a real regional fight
+# night we don't have in the database, not evidence of anything fake.
+COMP_GATE_EXEMPT_SPORTS = TOURNAMENT_SPORTS | {'boxing_mma'}
+
+
+def load_comp_kickoffs(guide_v2_path):
+    """Every real kickoff time guide-v2.json holds for each competition, regardless of team names --
+    this is the ground truth the title-match enrichment below is checked against. Deliberately
+    comp-keyed rather than team-keyed: the point is "is ANYTHING real happening in this competition
+    anywhere near this broadcast", not "is this the exact match"."""
+    idx = collections.defaultdict(list)
+    try:
+        with open(guide_v2_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return idx
+    for ev in data.get('events', []):
+        comp = ev.get('comp')
+        if not comp:
+            continue
+        try:
+            idx[comp].append(datetime.datetime.fromisoformat(ev['kick']))
+        except Exception:
+            continue
+    return idx
+
+
+def comp_has_ground_truth(kicks, now):
+    """Whether a comp's tracked kickoffs are actually usable evidence -- see COMP_GATE_MIN_FUTURE's
+    comment for why "has some entries" isn't the real bar."""
+    future = [k for k in kicks if k > now]
+    return len(future) >= COMP_GATE_MIN_FUTURE
+
+
+def enrich(events, fixtures, comp_kickoffs, now):
+    """Two ways a competition name reaches an event, two very different levels of trust.
+
+    The team-pair route (second loop) is evidence-backed by construction: it only fires when a real
+    fixture's own kickoff is already within 12h of this broadcast AND the two team names match. No
+    further check needed -- the proof is built into how the match was found.
+
+    The title-name route (first loop) is just a word match ("Bundesliga" appears in this programme's
+    title) and nothing more. That is how 41 of 42 "Champions League" programmes published on
+    2026-11-11 turned out to be archive rewind clips: the title named a real competition, nothing
+    tied the BROADCAST to any actual scheduled match in it. Fixed here rather than relying on the
+    archive-phrase filter alone (that is defense in depth, not the real fix) -- when a competition has
+    real, CURRENT tracked fixtures (see comp_has_ground_truth) and this broadcast's time doesn't sit
+    near any of them, the event is dropped outright, not just left uncategorised.
+
+    Getting "do we have ground truth" right matters as much as the gate itself: a first version of
+    this checked only "is the kickoff list non-empty" and it was actively harmful, not just
+    incomplete. FA Cup had 15 tracked kickoffs -- all of them already finished -- and Bundesliga/La
+    Liga/Ligue 1 had exactly one each; gating real current soccer coverage against stale or
+    one-data-point "evidence" is what collapsed the soccer count on the first attempt, nothing to do
+    with archive clips. comp_has_ground_truth and COMP_GATE_EXEMPT_SPORTS exist because of that.
+    """
+    hits = gated = 0
     for e in events:
         if e.get('comp') or not (e['home'] and e['away']):
             continue
@@ -791,7 +885,36 @@ def enrich(events, fixtures):
                 e['comp'] = f['comp']
                 hits += 1
                 break
-    return hits
+    keep = []
+    gate_s = COMP_GATE_WINDOW_HOURS * 3600
+    for e in events:
+        if e.get('comp'):
+            keep.append(e)
+            continue
+        matched = None
+        for comp_rx, comp, sports in comp_name_index():
+            if e['sport'] in sports and comp_rx.search(e['title']):
+                matched = comp
+                break
+        if not matched:
+            keep.append(e)
+            continue
+        kicks = comp_kickoffs.get(matched) or []
+        if e['sport'] in COMP_GATE_EXEMPT_SPORTS or not comp_has_ground_truth(kicks, now):
+            # no USABLE ground truth for this comp (none tracked, or what's tracked is stale/thin) --
+            # can't confirm OR deny, so don't reject on a check that has nothing real to check against
+            e['comp'] = matched
+            hits += 1
+            keep.append(e)
+            continue
+        if any(abs((k - e['start']).total_seconds()) <= gate_s for k in kicks):
+            e['comp'] = matched
+            hits += 1
+            keep.append(e)
+        else:
+            gated += 1
+    events[:] = keep
+    return hits, gated
 
 
 # Fixture channel rows carry a plain name plus a country ("Sky Sports NFL" / "UK"), so they can be put
@@ -1047,10 +1170,56 @@ def selftest():
     cid = canonical_id('BEIN1', 'beIN Sports 1')
     if not cid or not cid[0].startswith('mena:'):
         bad.append(('BEIN1 beIN Sports 1', cid, 'mena:*'))
+    # confirmed live on 2026-11-11: 41 of 42 "Champions League" programmes were archive clips, every
+    # one of them with the giveaway in <sub-title>/<desc>, not <title> -- these are the exact rows, so
+    # a regression here reopens the hole that caused it.
+    archive = [('Leeds United v Rangers', '', 'from the 1992/93 season', True),
+               ('Chelsea v Liverpool', '', 'from the 2008/09 season', True),
+               ('Bundesliga Highlights', '', 'Matchday highlights from the latest round of fixtures '
+                'from the 2026-2027 Bundesliga season', True),
+               ('EFL Cup Best Goals: 2023/24', '', "this season's Carabao Cup has thrown up a host", True),
+               ('The Best of The WBBL', '', 'A look back at a memorable encounter from the 2022 season', True),
+               # must NOT reject a real match recap -- "goals" and "classic" alone, with no year
+               # attached, are ordinary commentary language, not an archive marker.
+               ('LIVE: Premier League', 'Arsenal v Chelsea',
+                'A five-goal thriller as both sides traded classic late goals', False),
+               ('NRL - Panthers v Broncos', '', 'Round 14 clash at Accor Stadium', False)]
+    for title, sub, desc, expect_archive in archive:
+        got = bool(ARCHIVE_RE.search(title) or ARCHIVE_RE.search(sub) or ARCHIVE_RE.search(desc))
+        if got != expect_archive:
+            bad.append(('ARCHIVE_RE', title, sub, desc, got, expect_archive))
+
+    # fixture-kickoff gate: a competition we DO track, WITH ENOUGH FUTURE DATA TO TRUST, must prove a
+    # real kickoff is nearby; thin, stale or absent data must never reject (confirmed real: FA Cup's
+    # 15 kickoffs were all past, Bundesliga/La Liga/Ligue 1 had exactly 1 each -- all of this must
+    # come out "no verdict", not "reject", or soccer collapses again the way the first cut did).
+    gnow = datetime.datetime(2026, 11, 11, 10, 0, tzinfo=datetime.timezone.utc)
+    base_kick = datetime.datetime(2026, 11, 4, 20, 0, tzinfo=datetime.timezone.utc)
+    future_kick = gnow + datetime.timedelta(days=3)
+    gatecases = [
+        # (sport, kicks-around-"now", offset of THIS broadcast from base_kick, expect_kept)
+        ('soccer', [base_kick] * 5 + [future_kick] * 3, datetime.timedelta(hours=0), True),    # the match
+        ('soccer', [base_kick] * 5 + [future_kick] * 3, datetime.timedelta(hours=3), True),    # post-match
+        ('soccer', [base_kick] * 5 + [future_kick] * 3, datetime.timedelta(days=7, hours=14), False),  # archive clip
+        ('soccer', [], datetime.timedelta(days=7), True),                      # zero data: don't guess
+        ('soccer', [base_kick] * 15, datetime.timedelta(hours=0), True),       # 15 kickoffs, ALL past: FA Cup's case
+        ('soccer', [future_kick], datetime.timedelta(days=7), True),           # exactly 1 future: still too thin
+        ('boxing_mma', [future_kick] * 10, datetime.timedelta(days=7), True),  # dense data, EXEMPT sport anyway
+        ('golf', [future_kick] * 10, datetime.timedelta(days=7), True),       # dense data, EXEMPT (tournament)
+    ]
+    for sport, kicks, offset, expect_kept in gatecases:
+        start = base_kick + offset
+        gate_s = COMP_GATE_WINDOW_HOURS * 3600
+        exempt = sport in COMP_GATE_EXEMPT_SPORTS or not comp_has_ground_truth(kicks, gnow)
+        got_kept = exempt or any(abs((k - start).total_seconds()) <= gate_s for k in kicks)
+        if got_kept != expect_kept:
+            bad.append(('comp_gate', sport, len(kicks), offset, got_kept, expect_kept))
+
     for b in bad:
         print('  SELFTEST FAIL', b)
     print('selftest: %d checks, %d failures'
-          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + 8, len(bad)))
+          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + len(archive) + len(gatecases) + 8,
+             len(bad)))
     return not bad
 
 
@@ -1090,7 +1259,9 @@ def main():
     events = dedupe(kept)
     gv2 = args.guide_v2 or os.path.join(args.out, 'guide-v2.json')
     fixtures = load_fixture_enrichment(gv2)
-    hits = enrich(events, fixtures)
+    comp_kickoffs = load_comp_kickoffs(gv2)
+    before_gate = len(events)
+    hits, gated = enrich(events, fixtures, comp_kickoffs, now)
 
     # competition names must be settled before the overlap merge (it groups on them) and before the
     # slot join (it looks the competition up in the fixture list).
@@ -1112,6 +1283,8 @@ def main():
     print('kept %d -> %d after dedupe (%d%% were duplicate broadcasts)'
           % (before, len(events), 0 if not before else 100 - 100 * len(events) // before))
     print('enriched with a fixture competition name: %d' % hits)
+    print('rejected by the fixture-kickoff gate (named a real comp, no real kickoff nearby): %d/%d'
+          % (gated, before_gate))
     print('overlapping broadcasts merged across networks: %d (%d -> %d)'
           % (after_enrich - len(events), after_enrich, len(events)))
     print('matchups joined from fixture slots: %d   left alone as ambiguous: %d' % (joined, ambiguous))

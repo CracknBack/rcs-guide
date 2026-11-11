@@ -10,8 +10,15 @@ permissions:
   pages: write
   id-token: write
 
+# Same group as guide-v2.yml/epg-first.yml, not its own. deploy-pages replaces the WHOLE site, and
+# this job previously ran in its own separate group ("red-carpet-guide") -- meaning it could deploy at
+# any moment regardless of what the other two were doing, with nothing stopping two deploys racing.
+# Confirmed real: this job's 2026-11-11 06:46 run deleted guide-v2.json and the entire guides/
+# directory, because build_guide.py has never heard of either and only republishes what IT builds.
+# Sharing one group makes all three jobs take turns instead of racing; the carry-forward step below
+# is what stops a turn from being destructive once it has one.
 concurrency:
-  group: red-carpet-guide
+  group: red-carpet-guide-v2
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +53,14 @@ jobs:
 
       - name: Build the guide
         run: python3 scripts/build_guide.py build --epg epg --out public --work work --prev prev
+
+      # This job's own output never includes guide-v2.json or guides/ -- they are built by the other
+      # two jobs sharing this site. Without this step, deploying `public/` as-is deletes both, because
+      # deploy-pages replaces the entire site rather than merging into it. Narrow by design: it fetches
+      # ONLY the files this job doesn't produce, never index.html/sites/*.xml.gz, which this job has
+      # just rebuilt and must not have overwritten with a stale copy.
+      - name: Carry forward guide-v2.json and guides/, which this job does not build
+        run: python3 scripts/carry_forward.py --base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}" --out public
 
       - uses: actions/configure-pages@v5
 
