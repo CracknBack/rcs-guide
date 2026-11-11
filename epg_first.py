@@ -331,11 +331,15 @@ SHOW_RE = re.compile(r'\bhighlights?\b|\bclassic\b|\brewind\b|\breview\b|\bmagaz
 ARCHIVE_RE = re.compile(r'\bflashback\b|\blook\s*back\b|\bvault\b|\bretro\b|\bgreatest\b|\blegends?\b|'
                        r'\bacademy\b|\bmasterclass\b|\bgold\b|\bencore\b|\barchive\b|\bre-?run\b|'
                        r'\bbest\s*goals\b|'
-                       # these four need a year attached (unlike bare "goals"/"classic" above, which
-                       # a real match description can say honestly) -- a year number next to the word
-                       # is what makes it unambiguous.
+                       # these need a year (or season) attached (unlike bare "goals"/"classic" above,
+                       # which a real match description can say honestly) -- a year number next to the
+                       # word is what makes it unambiguous. The last alternative is the short season
+                       # form broadcasters actually use ("EFL 18/19: Aston Villa v Leeds Utd") -- a
+                       # full 4-digit year never appears in these, so the first two patterns missed
+                       # every one of them until this was added.
                        r'\bfrom\s+(the\s+)?(19|20)\d{2}\b|\b(19|20)\d{2}\s*/\s*(19|20)?\d{2}\b|'
-                       r'\b(19|20)\d{2}\s+(final|classic|season)\b|\blatest\s+round\s+of\s+fixtures\b', re.I)
+                       r'\b(19|20)\d{2}\s+(final|classic|season)\b|\blatest\s+round\s+of\s+fixtures\b|'
+                       r'\b\d{2}/\d{2}\s*:', re.I)
 LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 
 # Named studio strands that a "LIVE" prefix must NOT rescue. The live_hint exemption above exists so a
@@ -1179,6 +1183,8 @@ def selftest():
                 'from the 2026-2027 Bundesliga season', True),
                ('EFL Cup Best Goals: 2023/24', '', "this season's Carabao Cup has thrown up a host", True),
                ('The Best of The WBBL', '', 'A look back at a memorable encounter from the 2022 season', True),
+               ('EFL 18/19: Aston Villa v Leeds Utd', '', '', True),   # short season form, no 4-digit year
+               ('EFL 18/19:Leeds Utd v Derby County', '', '', True),   # no space after the colon either
                # must NOT reject a real match recap -- "goals" and "classic" alone, with no year
                # attached, are ordinary commentary language, not an archive marker.
                ('LIVE: Premier League', 'Arsenal v Chelsea',
