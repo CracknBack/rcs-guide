@@ -296,6 +296,52 @@ LEAGUES = [
     {'comp': 'Cycling', 'fixtures': 'tsdb', 'tsdb_league_id': '4465', 'tsdb_sport': 'Cycling'},
 ]
 
+# ---- How long an event actually lasts -------------------------------------------------------------
+# Until now the published event carried a start and nothing else, so the TV app had to guess a length,
+# and guessed a flat 2.25h for everything with one hardcoded two-name exception for Test cricket. That
+# is wrong for most of this file: a golf tournament runs four days, a Test five, a rally a weekend, a
+# fight card an evening. The visible symptom (owner-reported, and the reason this table exists): a
+# tournament showed as "live" for 2h15m, flipped to finished while it was still on day one, then
+# dropped out of every list entirely 12h after that -- so "there was not a single golf event".
+#
+# Resolution order per event, applied in resolve_league:
+#   1. a REAL end from the source (ESPN tournament endDate -- see espn_channels_tournament, which has
+#      always parsed it and until now only used it as a local matching bound, then discarded it)
+#   2. EVENT_HOURS_BY_COMP -- competitions whose shape differs from their sport's norm
+#   3. UNTIMED_EVENT_HOURS -- no real start time known (TheSportsDB sent 00:00:00), so the honest
+#      window is the whole calendar day rather than a precise-looking couple of hours
+#   4. EVENT_HOURS_BY_SPORT -- the ordinary case
+# Deliberately generous rather than tight: ending an event early makes it vanish mid-play, which is the
+# failure being fixed; ending it late only leaves it listed a bit longer than needed.
+EVENT_HOURS_BY_SPORT = {
+    'Soccer': 2.5, 'Basketball': 3.0, 'Ice Hockey': 3.0, 'Baseball': 3.5, 'American Football': 3.5,
+    'Motorsport': 2.5, 'Tennis': 3.0, 'Golf': 9.0, 'Fighting': 5.0, 'Rugby': 2.5, 'Cricket': 9.0,
+    'Cycling': 6.0, 'Australian Football': 3.0,
+}
+EVENT_HOURS_BY_COMP = {
+    # Five scheduled playing days. Replaces the client-side MULTIDAY_COMPS set, which lived in the TV
+    # app as two literal strings -- the kind of blanket client-side rule this file should own instead.
+    'ICC World Test Championship': 5 * 24,
+    'International Test Match Series': 5 * 24,
+    # One published event per whole rally/tournament rather than per day, so the window is the event.
+    'WRC': 3 * 24,
+}
+UNTIMED_EVENT_HOURS = 24
+DEFAULT_EVENT_HOURS = 2.5
+
+
+def event_end_ts(fixture, sport):
+    """Resolution order documented above. `fixture['end_ts']` is set only where a source gave a real
+    end (currently ESPN tournaments); everything else is derived."""
+    real = fixture.get('end_ts')
+    if real and real > fixture['kick_ts']:
+        return real
+    hours = (EVENT_HOURS_BY_COMP.get(fixture['comp'])
+             or (UNTIMED_EVENT_HOURS if not fixture.get('timed', True) else None)
+             or EVENT_HOURS_BY_SPORT.get(sport, DEFAULT_EVENT_HOURS))
+    return fixture['kick_ts'] + hours * 3600
+
+
 # ESPN's public, unauthenticated Site v2 API (site.api.espn.com) -- confirmed by hand 2026-11-01 to
 # return clean JSON with no Cloudflare/WAF gate at all, unlike nascar.com itself (hard-blocked even on a
 # bare request with no spoofing attempted). It only ever reports US broadcasters -- checked both
@@ -1010,7 +1056,8 @@ def fetch_football_data_fixtures(league, max_retries=3):
         out.append({'id': 'fd:%s:%s' % (league['fd_comp'], m['id']), 'comp': league['comp'], 'tsdb_id': None,
                     'home': m['homeTeam']['name'], 'away': m['awayTeam']['name'],
                     'label': m['homeTeam']['name'] + ' v ' + m['awayTeam']['name'],
-                    'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'status': m['status'], 'round': m.get('stage')})
+                    'kick': m['utcDate'], 'kick_ts': kick.timestamp(), 'timed': True,
+                    'status': m['status'], 'round': m.get('stage')})   # football-data always sends a real utcDate, never a placeholder
     return out
 
 
@@ -1059,9 +1106,21 @@ def fetch_tsdb_fixtures(league, cache):
             # (Event Hub plan item 3) treats it as a knockout-stage signal via a threshold/keyword check,
             # never a linear "higher round = more important" comparison. Passed through as-is, string or
             # None, no parsing here -- added 2026-11-10, first-ever capture of this field in this file.
+            # 'timed': whether that kick-off is a REAL start time or a placeholder. TheSportsDB sends
+            # strTime "00:00:00" to mean "we don't know when" -- confirmed by hand against the live API
+            # for golf ("Good Good Championship", dateEvent 2026-11-12, strTime 00:00:00) and the same
+            # holds for tennis, boxing, Moto2/Moto3 and WRC. That is 84 of 543 published events (15%).
+            # Taken literally it reads as midnight UTC, and the app then draws a confident "11:00am"
+            # (AEDT) that is pure fiction, and treats the event as over 2h15m later. The app already has
+            # an honest presentation for this case -- a `timed` flag, an "Event channels (time not
+            # known)" heading and an EVENT badge -- built for its own channel-name parsing and never
+            # connected to server data. This connects it.
+            raw_time = (e.get('strTime') or '').strip()
+            timed = bool(raw_time) and not raw_time.startswith('00:00:00')
             out.append({'id': 'tsdb:%s' % e.get('idEvent'), 'comp': league['comp'], 'tsdb_id': e.get('idEvent'),
                         'home': home, 'away': away, 'label': e.get('strEvent') or ((home or '') + ' vs ' + (away or '')),
                         'kick': datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(), 'kick_ts': ts,
+                        'timed': timed,
                         'status': e.get('strStatus') or 'NS', 'round': e.get('intRound')})
     # the next/past endpoints can both return an event close to "now"; de-dupe by TheSportsDB's own id
     seen, dedup = set(), []
@@ -1245,6 +1304,13 @@ def espn_channels_tournament(src, fixtures, cache, now_iso):
                 continue
             for name in names:
                 f['channels'].append(espn_channel_row(name, f['kick_ts'], now_iso))
+            # The real tournament end, kept rather than thrown away. `end` was already being parsed
+            # here (it bounds the fixture match just above) but never left this function, so the app
+            # had no idea a four-day tournament wasn't a two-hour one. This is the single most
+            # authoritative duration available anywhere in this file -- ESPN publishes the actual
+            # startDate/endDate spanning every round. See event_end_ts for how it's prioritised.
+            if end and end > f['kick_ts']:
+                f['end_ts'] = max(f.get('end_ts') or 0, end)
             # Owner-reported 2026-11-11: TheSportsDB's own strEvent (this fixture's 'label') had this
             # exact tournament as "Good Good Championship" -- ESPN's real live scoreboard, confirmed by
             # hand against the same date, calls it "Austin Championship pres. by Compliance Solutions".
@@ -1412,8 +1478,14 @@ def resolve_league(league, cache, xmltv=None):
                 for c in rows:
                     c['confidence'] = 'confirmed'
 
+    # 'end' is published for every event, so the app never has to guess a duration again (see
+    # EVENT_HOURS_BY_SPORT). Computed last, after espn_channels_tournament has had its chance to
+    # attach a real end_ts.
     for f in fixtures:
+        f['end'] = datetime.fromtimestamp(event_end_ts(f, league['tsdb_sport']), tz=timezone.utc).isoformat()
+        f.setdefault('timed', True)
         del f['kick_ts']
+        f.pop('end_ts', None)
         f.pop('tsdb_id', None)
     return fixtures
 
