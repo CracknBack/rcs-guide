@@ -781,6 +781,32 @@ TSDB_SPORT_TO_ID = {
 }
 
 
+# Confirmed live and wrong: "UEFA Women's Champions League - OL Lyonnes vs. Juventus", a real fixture
+# on a real channel (au:espn2), was being tagged comp='Champions League' -- the MEN'S competition --
+# because "Champions League" is literally a substring of "Women's Champions League" and \b word
+# boundaries don't stop a substring match, only a whole-extra-word one. LEAGUES has zero women's
+# competition entries at all (confirmed: `grep -i women resolve_v2.py` on the comp list is empty), so
+# there is nothing CORRECT to attach here yet -- leaving the event uncategorised is honest; relabelling
+# it as the men's competition is not. comp_name_index() itself can't fix this (it only sees one league
+# name at a time, not the broadcast's own title), so the guard lives where the title is actually
+# checked, in enrich() below.
+WOMENS_MARKER = re.compile(r"\bwomen'?s\b|\bladies\b|\bwnrl\b|\bwbbl\b|\baflw\b|\bwsl\b", re.I)
+
+
+def match_title_comp(title, sport):
+    """The actual decision used by enrich()'s title-name route, pulled out so the self-test exercises
+    the REAL logic rather than a hand-copied approximation of it that could silently drift out of sync
+    with a future edit here."""
+    title_is_womens = bool(WOMENS_MARKER.search(title))
+    for comp_rx, comp, sports in comp_name_index():
+        if sport not in sports or not comp_rx.search(title):
+            continue
+        if title_is_womens and not WOMENS_MARKER.search(comp):
+            continue
+        return comp
+    return None
+
+
 def comp_name_index():
     try:
         from resolve_v2 import LEAGUES
@@ -882,7 +908,13 @@ def enrich(events, fixtures, comp_kickoffs, now):
         ha, aa = norm_key(e['home']).split(), norm_key(e['away']).split()
         if not ha or not aa:
             continue
+        # Same WOMENS_MARKER guard as the title-name route below, for the same reason: keying on
+        # just the first word of each team name ("Arsenal Women" -> "arsenal") means a women's
+        # fixture's team pair can collide with a men's fixture carrying the same club surnames.
+        e_womens = bool(WOMENS_MARKER.search(e['title']) or WOMENS_MARKER.search(str(e['home'])) or WOMENS_MARKER.search(str(e['away'])))
         for f in fixtures.get(frozenset([ha[0], aa[0]]), []):
+            if e_womens and not WOMENS_MARKER.search(str(f['comp'] or '')):
+                continue
             # same teams can meet in several competitions in one window (an ODI and a Test). Only
             # trust the competition name when the fixture's own kickoff is near this broadcast.
             if abs((f['kick'] - e['start']).total_seconds()) <= 12 * 3600:
@@ -895,11 +927,7 @@ def enrich(events, fixtures, comp_kickoffs, now):
         if e.get('comp'):
             keep.append(e)
             continue
-        matched = None
-        for comp_rx, comp, sports in comp_name_index():
-            if e['sport'] in sports and comp_rx.search(e['title']):
-                matched = comp
-                break
+        matched = match_title_comp(e['title'], e['sport'])
         if not matched:
             keep.append(e)
             continue
@@ -1221,11 +1249,26 @@ def selftest():
         if got_kept != expect_kept:
             bad.append(('comp_gate', sport, len(kicks), offset, got_kept, expect_kept))
 
+    # confirmed live and wrong on 2026-11-11: a real women's fixture tagged as the MEN'S competition,
+    # because "Champions League" is a substring of "Women's Champions League". Must now come out
+    # uncategorised (LEAGUES has no women's entry to attach instead), never relabelled as the men's comp.
+    womens_cases = [
+        ("Live: UEFA Women's Champions League Soccer", 'soccer', None),
+        ("LIVE: UEFA Women's Champions League - OL Lyonnes vs. Juventus", 'soccer', None),
+        ("UEFA Women's Champions League - Arsenal vs. Barcelona", 'soccer', None),
+        # a real men's fixture must still attach normally -- the guard must not swallow everything
+        ('UEFA Champions League Football', 'soccer', 'Champions League'),
+    ]
+    for title, sport, expect in womens_cases:
+        got = match_title_comp(title, sport)
+        if got != expect:
+            bad.append(('match_title_comp', title, got, expect))
+
     for b in bad:
         print('  SELFTEST FAIL', b)
     print('selftest: %d checks, %d failures'
-          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + len(archive) + len(gatecases) + 8,
-             len(bad)))
+          % (len(cases) + len(idc) + len(atc) + len(dsc) + len(studio) + len(archive) + len(gatecases)
+             + len(womens_cases) + 8, len(bad)))
     return not bad
 
 
