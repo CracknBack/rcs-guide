@@ -38,7 +38,8 @@ XMLTV_BASE = 'https://epgshare01.online/epgshare01/epg_ripper_%s.xml.gz'
 # Checked by hand 2026-11-11: EUROSPORT1 and OPTUSSPORTS1 both 404 on epgshare01 (the TV app has been
 # requesting both for a while and silently getting nothing). IE1 and ZA1 do exist and were never used
 # -- IE1 turned out to carry more sport than any other feed in the dry run.
-FEEDS = ['AU1', 'UK1', 'US2', 'CA2', 'NZ1', 'IN1', 'ZA1', 'IE1', 'BEIN1']
+FEEDS = ['AU1', 'UK1', 'US2', 'CA2', 'NZ1', 'IN1', 'ZA1', 'IE1', 'BEIN1', 'SG1', 'MY1', 'IT1', 'FR1',
+         'DE1', 'NL1', 'PT1', 'BE2', 'AT1', 'GR1', 'TR1', 'CH1', 'BR2', 'MX1']
 HORIZON_DAYS = 8
 INDEX_AHEAD_HOURS = 24   # how far index.json's cross-sport "All Sports" view reaches
 
@@ -221,6 +222,281 @@ CANONICAL = [
     ('mena:bein_4', 'QA', 'beIN Sports 4', r'bein\s*sports?\s*4'),
     ('mena:bein',   'QA', 'beIN Sports',   r'bein'),
     ('mena:alkass', 'QA', 'Alkass',        r'alkass'),
+    # ---- Singapore ----
+    # Verified by hand 2026-11-12 against the real SG1 feed: StarHub's "Hub Sports" channels already
+    # carry live FAGE WTA Finals Indian Wells coverage (the exact event this whole guide rebuild was
+    # chasing) plus LPGA/DP World Tour golf and ATP Tour tennis -- real, current, not a guess.
+    ('sg:hub_sports_1', 'SG', 'Hub Sports 1', r'hub\s*sports?\s*1\b'),
+    ('sg:hub_sports_2', 'SG', 'Hub Sports 2', r'hub\s*sports?\s*2\b'),
+    ('sg:hub_sports_3', 'SG', 'Hub Sports 3', r'hub\s*sports?\s*3\b'),
+    ('sg:hub_sports_4', 'SG', 'Hub Sports 4', r'hub\s*sports?\s*4\b'),
+    ('sg:hub_sports_5', 'SG', 'Hub Sports 5', r'hub\s*sports?\s*5\b'),
+    ('sg:hub_sports_6', 'SG', 'Hub Sports 6', r'hub\s*sports?\s*6\b'),
+    ('sg:hub_sports_7', 'SG', 'Hub Sports 7', r'hub\s*sports?\s*7\b'),
+    ('sg:hub_sports_8', 'SG', 'Hub Sports 8', r'hub\s*sports?\s*8\b'),
+    ('sg:mio_cricket_plus', 'SG', 'mio Cricket Plus', r'mio\s*cricket\s*plus'),
+    ('sg:mio_cricket',      'SG', 'mio Cricket',      r'mio\s*cricket'),
+    ('sg:mio_sports_2',     'SG', 'mio Sports 2',     r'mio\s*sports?\s*2\b'),
+    ('sg:mio_sports_3',     'SG', 'mio Sports 3',     r'mio\s*sports?\s*3\b'),
+    ('sg:mio_sports',       'SG', 'mio Sports',       r'mio\s*sports?\b'),
+    ('sg:bein_5',        'SG', 'beIN Sports 5 (SG)', r'bein\s*sports?\s*5'),
+    ('sg:bein_4',        'SG', 'beIN Sports 4 (SG)', r'bein\s*sports?\s*4'),
+    ('sg:bein_3',        'SG', 'beIN Sports 3 (SG)', r'bein\s*sports?\s*3'),
+    ('sg:bein_2',        'SG', 'beIN Sports 2 (SG)', r'bein\s*sports?\s*2'),
+    ('sg:bein_rugby',    'SG', 'beIN Sports Rugby (SG)', r'bein\s*sports?\s*rugby'),
+    ('sg:bein_1',        'SG', 'beIN Sports (SG)',   r'bein\s*sports?'),
+    ('sg:premier_sports','SG', 'Premier Sports (SG)', r'premier\s*sports?\b'),
+    ('sg:spotv_2',       'SG', 'SPOTV 2',          r'spotv\s*2'),
+    ('sg:spotv',         'SG', 'SPOTV',            r'^spotv\b'),
+    ('sg:mola_sport',    'SG', 'Mola Sport',       r'mola\s*sport'),
+    ('sg:cricket_plus',  'SG', 'Cricket Plus',     r'^cricket\s*plus'),
+    ('sg:fight_sports',  'SG', 'Fight Sports',     r'fight\s*sports'),
+    # ---- Malaysia ----
+    # Verified by hand 2026-11-12 against the real MY1 feed: real Astro sports channels (Arena,
+    # Grandstand, Sports Plus/UHD, Badminton, Cricket, Football, Premier League) plus a genuine Golf
+    # Channel with live LPGA/DP World Tour coverage -- not invented, checked against real programme titles.
+    ('my:astro_premier_league_5', 'MY', 'Astro Premier League 5', r'astro\s*premier\s*league\s*5'),
+    ('my:astro_premier_league_4', 'MY', 'Astro Premier League 4', r'astro\s*premier\s*league\s*4'),
+    ('my:astro_premier_league_3', 'MY', 'Astro Premier League 3', r'astro\s*premier\s*league\s*3'),
+    ('my:astro_premier_league_2', 'MY', 'Astro Premier League 2', r'astro\s*premier\s*league\s*2'),
+    ('my:astro_premier_league',   'MY', 'Astro Premier League',   r'astro\s*premier\s*league'),
+    ('my:astro_arena_2',     'MY', 'Astro Arena 2',     r'astro\s*arena\s*2'),
+    ('my:astro_arena',       'MY', 'Astro Arena',       r'astro\s*arena'),
+    ('my:astro_grandstand',  'MY', 'Astro Grandstand',  r'astro\s*grandstand'),
+    ('my:astro_sports_uhd',  'MY', 'Astro Sports UHD',  r'astro\s*sports?\s*uhd'),
+    ('my:astro_sports_plus', 'MY', 'Astro Sports Plus', r'astro\s*sports?\s*plus'),
+    ('my:astro_badminton',   'MY', 'Astro Badminton',   r'astro\s*badminton'),
+    ('my:astro_cricket',     'MY', 'Astro Cricket',     r'astro\s*cricket'),
+    ('my:astro_football',    'MY', 'Astro Football',    r'astro\s*football'),
+    ('my:golf_channel',      'MY', 'Golf Channel (MY)', r'golf\s*channel'),
+    ('my:premier_sports_rugby', 'MY', 'Premier Sports Rugby', r'premier\s*sports?\s*rugby'),
+    ('my:w_sport',           'MY', 'W-Sport',           r'w[\s-]*sport\b'),
+    ('my:bein_3',            'MY', 'beIN Sports 3 (MY)', r'bein\s*sports?\s*3'),
+    ('my:bein_2',            'MY', 'beIN Sports 2 (MY)', r'bein\s*sports?\s*2'),
+    ('my:bein_1',            'MY', 'beIN Sports 1 (MY)', r'bein\s*sports?\s*1'),
+    ('my:eurosport',         'MY', 'Eurosport (MY)',     r'eurosport'),
+    # ---- Italy ----
+    # Verified by hand 2026-11-12 against the real IT1 feed: DAZN 1 holds real live Serie A rights and
+    # carries matches by team names alone ("Fiorentina - Juventus", "Napoli - Lazio"), no literal
+    # "Serie A" in the title -- exactly the case DEDICATED exists for. Sky Sport Calcio also carries
+    # Bundesliga and Premier League matches alongside Serie A, a bonus for those two gaps too, not
+    # invented -- seen directly in its own real programme titles ("Mainz - FC Bayern Monaco").
+    ('it:dazn_1',           'IT', 'DAZN 1 (IT)',           r'^dazn\s*1\b'),
+    ('it:dazn_2',           'IT', 'DAZN 2 (IT)',           r'^dazn\s*2\b'),
+    ('it:dazn_4',           'IT', 'DAZN 4 (IT)',           r'^dazn\s*4\b'),
+    ('it:dazn_5',           'IT', 'DAZN 5 (IT)',           r'^dazn\s*5\b'),
+    ('it:sky_calcio',       'IT', 'Sky Sport Calcio',      r'sky\s*sport\s*calcio'),
+    ('it:sky_sport_f1',     'IT', 'Sky Sport F1 (IT)',     r'sky\s*sport\s*f1'),
+    ('it:sky_sport_motogp', 'IT', 'Sky Sport MotoGP',      r'sky\s*sport\s*motogp'),
+    ('it:sky_sport_tennis', 'IT', 'Sky Sport Tennis (IT)', r'sky\s*sport\s*tennis'),
+    ('it:sky_sport_golf',   'IT', 'Sky Sport Golf (IT)',   r'sky\s*sport\s*golf'),
+    ('it:sky_sport_nba',    'IT', 'Sky Sport NBA (IT)',    r'sky\s*sport\s*nba'),
+    ('it:sky_sport_uno',    'IT', 'Sky Sport Uno',         r'sky\s*sport\s*uno'),
+    ('it:sky_sport_24',     'IT', 'Sky Sport 24',          r'sky\s*sport\s*24'),
+    ('it:sportitalia',      'IT', 'Sportitalia',           r'sportitalia'),
+    # Fixed 2026-11-12: this was one bare 'eurosport' entry collapsing two real, distinct channels
+    # ("Eurosport.Italia" and "Eurosport.2.Italia") into a single id -- the exact numbered-variant
+    # collapse the UK section above was already careful to avoid (uk:eurosport_1/_2). Verified by hand
+    # against the real feed before splitting: both carry real, different content (snooker/skiing/
+    # endurance racing on 1, UCI WorldTour cycling/endurance/skiing on 2), not interchangeable.
+    ('it:eurosport_2',      'IT', 'Eurosport 2 (IT)',      r'eurosport\s*2'),
+    ('it:eurosport_1',      'IT', 'Eurosport (IT)',        r'eurosport'),
+    # ---- France ----
+    # Verified by hand 2026-11-12 against the real FR1 feed. Honest finding, not the one expected:
+    # DAZN 1 (France's actual live Ligue 1 rights holder) has ZERO real programmes in this feed's
+    # current window -- only a kids' magazine show and an esports league happen to share the "Ligue 1"
+    # name. So this does NOT fix Ligue 1 itself yet. What it DOES give, confirmed from real titles:
+    # beIN Sports France carries Bundesliga, Portugal's Primeira Liga, Turkish Super Lig and Ligue 2 --
+    # a genuine bonus for three separate other gaps, found by accident while looking for Ligue 1. These
+    # specific slots carry no sub-title matchup (checked), but real team names in French prose in the
+    # <desc> field (e.g. "Bayer Leverkusen" / "Cologne") -- kept anyway, same as any other confirmed
+    # channel+time slot without an identified matchup (same shape as NBA Extra elsewhere in this file).
+    ('fr:bein_max_10',      'FR', 'beIN Sports MAX 10 (FR)', r'bein\s*sports?\s*max\s*10\b'),
+    ('fr:bein_max_4',       'FR', 'beIN Sports MAX 4 (FR)', r'bein\s*sports?\s*max\s*4\b'),
+    ('fr:bein_max_5',       'FR', 'beIN Sports MAX 5 (FR)', r'bein\s*sports?\s*max\s*5\b'),
+    ('fr:bein_max_6',       'FR', 'beIN Sports MAX 6 (FR)', r'bein\s*sports?\s*max\s*6\b'),
+    ('fr:bein_max_7',       'FR', 'beIN Sports MAX 7 (FR)', r'bein\s*sports?\s*max\s*7\b'),
+    ('fr:bein_max_8',       'FR', 'beIN Sports MAX 8 (FR)', r'bein\s*sports?\s*max\s*8\b'),
+    ('fr:bein_max_9',       'FR', 'beIN Sports MAX 9 (FR)', r'bein\s*sports?\s*max\s*9\b'),
+    ('fr:bein_3',           'FR', 'beIN Sports 3 (FR)',    r'bein\s*sports?\s*3'),
+    ('fr:bein_2',           'FR', 'beIN Sports 2 (FR)',    r'bein\s*sports?\s*2'),
+    ('fr:bein_1',           'FR', 'beIN Sports (FR)',      r'bein\s*sports?'),
+    ('fr:canal_sport360',   'FR', 'Canal+ Sport 360',      r'canal\+?\s*sport\s*360'),
+    ('fr:canal_foot',       'FR', 'Canal+ Foot',           r'canal\+?\s*foot'),
+    ('fr:canal_sport',      'FR', 'Canal+ Sport',          r'canal\+?\s*sport'),
+    ('fr:rmc_sport_1',      'FR', 'RMC Sport 1',           r'rmc\s*sport\s*1'),
+    ('fr:eurosport_2',      'FR', 'Eurosport 2 (FR)',      r'eurosport\s*2'),
+    ('fr:eurosport_1',      'FR', 'Eurosport (FR)',        r'eurosport'),
+
+    # Germany -- verified against real DE1 feed. Sky Sport Premier League/Bundesliga/F1/Golf/Tennis/
+    # Top Event/News/Mix and DAZN 1/2 all carry real, current fixtures (confirmed: "Fussball: 2.
+    # Bundesliga", "Formel 1: Grosser Preis von Mexiko", "Tennis: WTA Finals"). Sky Sport Austria 1
+    # (on this German feed, not AT1) carries the actual Austrian Bundesliga ("Admiral BL").
+    ('de:sky_premier_league', 'DE', 'Sky Sport Premier League (DE)', r'sky\s*sport\s*premier\s*league'),
+    ('de:sky_bundesliga',   'DE', 'Sky Sport Bundesliga (DE)', r'sky\s*sport\s*bundesliga'),
+    ('de:sky_austria_1',    'DE', 'Sky Sport Austria 1 (DE)', r'sky\s*sport\s*austria\s*1'),
+    ('de:sky_austria',      'DE', 'Sky Sport Austria (DE)', r'sky\s*sport\s*austria'),
+    ('de:sky_f1',           'DE', 'Sky Sport F1 (DE)', r'sky\s*sport\s*f1'),
+    ('de:sky_golf',         'DE', 'Sky Sport Golf (DE)', r'sky\s*sport\s*golf'),
+    ('de:sky_tennis',       'DE', 'Sky Sport Tennis (DE)', r'sky\s*sport\s*tennis'),
+    ('de:sky_top_event',    'DE', 'Sky Sport Top Event (DE)', r'sky\s*sport\s*top\s*event'),
+    ('de:sky_news',         'DE', 'Sky Sport News (DE)', r'sky\s*sport\s*news'),
+    ('de:sky_mix',          'DE', 'Sky Sport Mix (DE)', r'sky\s*sport\s*mix'),
+    ('de:dazn_1',           'DE', 'DAZN 1 (DE)', r'dazn\s*1\b'),
+    ('de:dazn_2',           'DE', 'DAZN 2 (DE)', r'dazn\s*2\b'),
+    ('de:dazn',             'DE', 'DAZN (DE)', r'\bdazn\b'),
+    ('de:sportdigital_fussball', 'DE', 'sportdigital Fussball (DE)', r'sportdigital\s*fussball'),
+    ('de:sport1_plus',      'DE', 'SPORT1+ (DE)', r'sport1\s*\+'),
+    ('de:sport1',           'DE', 'SPORT1 (DE)', r'sport1\b'),
+    ('de:eurosport_2',      'DE', 'Eurosport 2 (DE)', r'eurosport\s*2'),
+    ('de:eurosport_1',      'DE', 'Eurosport (DE)', r'eurosport'),
+
+    # Netherlands -- verified against real NL1 feed. Ziggo Sport 1-6 (+Extra/Totaal) carry genuine
+    # live fixtures already in internationally-recognisable form (LaLiga, Serie A, ATP/WTA, MotoGP,
+    # NASCAR), so no Dutch-language title work was needed beyond the 'voetbal' category fallback above.
+    ('nl:ziggo_sport_extra', 'NL', 'Ziggo Sport Extra (NL)', r'ziggo\s*sport\s*extra'),
+    ('nl:ziggo_sport_totaal', 'NL', 'Ziggo Sport Totaal (NL)', r'ziggo\s*sport\s*totaal'),
+    ('nl:ziggo_sport_1',    'NL', 'Ziggo Sport 1 (NL)', r'ziggo\s*sport\s*1'),
+    ('nl:ziggo_sport_2',    'NL', 'Ziggo Sport 2 (NL)', r'ziggo\s*sport\s*2'),
+    ('nl:ziggo_sport_3',    'NL', 'Ziggo Sport 3 (NL)', r'ziggo\s*sport\s*3'),
+    ('nl:ziggo_sport_4',    'NL', 'Ziggo Sport 4 (NL)', r'ziggo\s*sport\s*4'),
+    ('nl:ziggo_sport_5',    'NL', 'Ziggo Sport 5 (NL)', r'ziggo\s*sport\s*5'),
+    ('nl:ziggo_sport_6',    'NL', 'Ziggo Sport 6 (NL)', r'ziggo\s*sport\s*6'),
+    ('nl:espn_2',           'NL', 'ESPN 2 (NL)', r'espn\s*2'),
+    ('nl:espn_3',           'NL', 'ESPN 3 (NL)', r'espn\s*3'),
+    ('nl:espn_4',           'NL', 'ESPN 4 (NL)', r'espn\s*4'),
+    ('nl:espn',             'NL', 'ESPN (NL)', r'\bespn\b'),
+    ('nl:eurosport_2',      'NL', 'Eurosport 2 (NL)', r'eurosport\s*2'),
+    ('nl:eurosport_1',      'NL', 'Eurosport (NL)', r'eurosport'),
+    ('nl:viaplay_tv_plus',  'NL', 'Viaplay TV+ (NL)', r'viaplay\s*tv\s*\+'),
+    ('nl:viaplay_tv',       'NL', 'Viaplay TV (NL)', r'viaplay\s*tv'),
+    ('nl:viaplay',          'NL', 'Viaplay (NL)', r'\bviaplay\b'),
+
+    # Portugal -- verified against real PT1 feed. DAZN 3/4/5 are placeholder-only in this snapshot
+    # ("Informacao Nao Disponibilizada Pelo Canal" on every sampled slot) -- only DAZN 1/2 carry real
+    # fixtures. Sport TV 1-4 is the genuine Primeira Liga rights holder.
+    ('pt:dazn_1',           'PT', 'DAZN 1 (PT)', r'dazn\s*1\b'),
+    ('pt:dazn_2',           'PT', 'DAZN 2 (PT)', r'dazn\s*2\b'),
+    ('pt:sport_tv_plus',    'PT', 'Sport TV+ (PT)', r'sport\s*tv\s*\+'),
+    ('pt:sport_tv_1',       'PT', 'Sport TV1 (PT)', r'sport\s*tv\s*1\b'),
+    ('pt:sport_tv_2',       'PT', 'Sport TV2 (PT)', r'sport\s*tv\s*2\b'),
+    ('pt:sport_tv_3',       'PT', 'Sport TV3 (PT)', r'sport\s*tv\s*3\b'),
+    ('pt:sport_tv_4',       'PT', 'Sport TV4 (PT)', r'sport\s*tv\s*4\b'),
+    ('pt:sporting_tv',      'PT', 'Sporting TV (PT)', r'sporting\s*tv'),
+    ('pt:eurosport_2',      'PT', 'Eurosport 2 (PT)', r'eurosport\s*2'),
+    ('pt:eurosport_1',      'PT', 'Eurosport (PT)', r'eurosport'),
+    ('pt:w_sport',          'PT', 'W-Sport (PT)', r'w-?sport'),
+
+    # Belgium -- verified against real BE2 feed (a large, noisy multi-broadcaster aggregation; only
+    # genuinely Belgian-rights channels with real, non-placeholder content kept). DAZN Pro League 1
+    # is the real Belgian Pro League (Jupiler Pro League) rights holder; DAZN Pro League 2 and both
+    # Eleven Sports slots were "Geen uitzending"/"Wordt aangekondigd" (no real content) and left out.
+    # Rai Sport and other clearly foreign re-broadcasts on this feed are left unscoped rather than
+    # mislabelled as Belgian.
+    ('be:dazn_pro_league_1', 'BE', 'DAZN Pro League 1 (BE)', r'dazn\s*pro\s*league\s*1'),
+    ('be:dazn_1',           'BE', 'DAZN 1 (BE)', r'dazn\s*1\b'),
+    ('be:voosport_world_1', 'BE', 'VOOsport World 1 (BE)', r'voosport\s*world\s*1'),
+    ('be:voosport_world_2', 'BE', 'VOOsport World 2 (BE)', r'voosport\s*world\s*2'),
+    ('be:rmc_sport_1',      'BE', 'RMC Sport 1 (BE)', r'rmc\s*sport\s*1'),
+    ('be:sport10',          'BE', 'Sport10 (BE)', r'sport\s*10'),
+    ('be:eurosport_2',      'BE', 'Eurosport 2 (BE)', r'eurosport\s*2'),
+    ('be:eurosport_1',      'BE', 'Eurosport (BE)', r'eurosport'),
+
+    # Austria -- verified against real AT1 feed. Bare "ORF Sport" showed only a repeating "Silent
+    # Sports +" placeholder-style title and is left out; ORF Sport1+ carries real distinct fixtures.
+    ('at:sky_premier_league', 'AT', 'Sky Sport Premier League (AT)', r'sky\s*sport\s*premier\s*league'),
+    ('at:sky_mix',          'AT', 'Sky Sport Mix (AT)', r'sky\s*sport\s*mix'),
+    ('at:sky_news',         'AT', 'Sky Sport News (AT)', r'sky\s*sport\s*news'),
+    ('at:sky_f1',           'AT', 'Sky Sport F1 (AT)', r'sky\s*sport\s*f1'),
+    ('at:sky_golf',         'AT', 'Sky Sport Golf (AT)', r'sky\s*sport\s*golf'),
+    ('at:sky_tennis',       'AT', 'Sky Sport Tennis (AT)', r'sky\s*sport\s*tennis'),
+    ('at:orf_sport1_plus',  'AT', 'ORF Sport1+ (AT)', r'orf\s*sport\s*1\s*\+'),
+    ('at:eurosport_2',      'AT', 'Eurosport 2 (AT)', r'eurosport\s*2'),
+    ('at:eurosport_1',      'AT', 'Eurosport (AT)', r'eurosport'),
+
+    # Greece -- verified against real GR1 feed. Magenta Sport channels appear in this feed too but
+    # are the Austrian T-Mobile service leaking into an aggregated listing, not genuinely Greek --
+    # left unscoped rather than mislabelled. Novasports and COSMOTE Sport are the two real Greek
+    # sports-rights broadcasters (confirmed real Greek-script fixtures, e.g. "Fenerbahce - Liverpool").
+    ('gr:novasports_premier_league', 'GR', 'Novasports Premier League (GR)', r'novasports\s*premier\s*league'),
+    ('gr:novasports_prime', 'GR', 'Novasports Prime (GR)', r'novasports\s*prime'),
+    ('gr:novasports_1',     'GR', 'Novasports 1 (GR)', r'novasports\s*1'),
+    ('gr:novasports_2',     'GR', 'Novasports 2 (GR)', r'novasports\s*2'),
+    ('gr:novasports_3',     'GR', 'Novasports 3 (GR)', r'novasports\s*3'),
+    ('gr:novasports_4',     'GR', 'Novasports 4 (GR)', r'novasports\s*4'),
+    ('gr:novasports_5',     'GR', 'Novasports 5 (GR)', r'novasports\s*5'),
+    ('gr:novasports_6',     'GR', 'Novasports 6 (GR)', r'novasports\s*6'),
+    ('gr:cosmote_sport_1',  'GR', 'COSMOTE Sport 1 (GR)', r'cosmote\s*sport\s*1'),
+    ('gr:cosmote_sport_2',  'GR', 'COSMOTE Sport 2 (GR)', r'cosmote\s*sport\s*2'),
+    ('gr:cosmote_sport_3',  'GR', 'COSMOTE Sport 3 (GR)', r'cosmote\s*sport\s*3'),
+    ('gr:cosmote_sport_4',  'GR', 'COSMOTE Sport 4 (GR)', r'cosmote\s*sport\s*4'),
+    ('gr:cosmote_sport_5',  'GR', 'COSMOTE Sport 5 (GR)', r'cosmote\s*sport\s*5'),
+    ('gr:cosmote_sport_6',  'GR', 'COSMOTE Sport 6 (GR)', r'cosmote\s*sport\s*6'),
+    ('gr:cosmote_sport_7',  'GR', 'COSMOTE Sport 7 (GR)', r'cosmote\s*sport\s*7'),
+    ('gr:cosmote_sport_8',  'GR', 'COSMOTE Sport 8 (GR)', r'cosmote\s*sport\s*8'),
+    ('gr:cosmote_sport_9',  'GR', 'COSMOTE Sport 9 (GR)', r'cosmote\s*sport\s*9'),
+    ('gr:eurosport_2',      'GR', 'Eurosport 2 (GR)', r'eurosport\s*2'),
+    ('gr:eurosport_1',      'GR', 'Eurosport (GR)', r'eurosport'),
+
+    # Turkey -- verified against real TR1 feed. Every programme in this feed carries ZERO category
+    # tags (confirmed empty on every sampled channel), so classification depends entirely on the
+    # title -- and most real fixtures are titled as bare team names ("T. Konyaspor - Galatasaray")
+    # with no sport keyword at all, unclassifiable without one. Real yield here is intentionally
+    # modest: only slots that already name an internationally-recognised league (La Liga, Serie A,
+    # Super Lig after the SPORT_RULES addition above) will surface.
+    ('tr:beinsports_4',     'TR', 'beIN Sports 4 (TR)', r'bein\s*sports?\s*4'),
+    ('tr:beinsports_3',     'TR', 'beIN Sports 3 (TR)', r'bein\s*sports?\s*3'),
+    ('tr:beinsports_2',     'TR', 'beIN Sports 2 (TR)', r'bein\s*sports?\s*2'),
+    ('tr:beinsports_1',     'TR', 'beIN Sports (TR)', r'bein\s*sports?'),
+    ('tr:fox_sports',       'TR', 'Fox Sports (TR)', r'fox\s*sports?'),
+    ('tr:trt_spor',         'TR', 'TRT Spor (TR)', r'trt\s*spor'),
+    ('tr:ssport_2',         'TR', 'SSport 2 (TR)', r'ssport\s*2'),
+    ('tr:ssport',           'TR', 'SSport (TR)', r'ssport'),
+    ('tr:a_spor',           'TR', 'A Spor (TR)', r'\ba\s*spor\b'),
+    ('tr:eurosport_1',      'TR', 'Eurosport (TR)', r'eurosport'),
+
+    # Switzerland -- verified against real CH1 feed (very large, mostly non-Swiss re-broadcasts of
+    # German/French/Italian channels already covered via DE1/AT1/FR1/IT1 -- only genuinely
+    # Swiss-specific rights holders kept, to avoid duplicating those). Zero category data on every
+    # sampled channel, same situation as TR1. MySports Un/Eins showed only a repeating "Slow Hockey"
+    # placeholder-style title on every sample and are left out; MySports EDGE had real distinct
+    # fixtures (NHL, FIA Rally-Raid) so is kept.
+    ('ch:blue_sport_d_1',   'CH', 'blue Sport D 1 (CH)', r'blue\s*sport\s*d\s*1'),
+    ('ch:blue_sport_d_2',   'CH', 'blue Sport D 2 (CH)', r'blue\s*sport\s*d\s*2'),
+    ('ch:blue_sport_f',     'CH', 'blue Sport F (CH)', r'blue\s*sport\s*f\b'),
+    ('ch:mysports_edge',    'CH', 'MySports EDGE (CH)', r'mysports\s*edge'),
+
+    # Brazil -- used BR2 (clean, 97 channels) over BR1 (same broadcasters duplicated per-city, much
+    # noisier, and its Premiere channel was empty in this snapshot where BR2's "Premiere Clubes" is
+    # real -- confirmed real match reports, e.g. "VT - Bahia x Sao Paulo"). SporTV/ESPN/Band Sports
+    # all carry real Brasileirao and other fixtures, already with real team names in the title.
+    ('br:premiere_clubes',  'BR', 'Premiere Clubes (BR)', r'premiere\s*clubes'),
+    ('br:sportv_2',         'BR', 'SporTV 2 (BR)', r'sportv\s*2'),
+    ('br:sportv_3',         'BR', 'SporTV 3 (BR)', r'sportv\s*3'),
+    ('br:sportv',           'BR', 'SporTV (BR)', r'sportv\b'),
+    ('br:espn_2',           'BR', 'ESPN 2 (BR)', r'espn\s*2'),
+    ('br:espn_3',           'BR', 'ESPN 3 (BR)', r'espn\s*3'),
+    ('br:espn_4',           'BR', 'ESPN 4 (BR)', r'espn\s*4'),
+    ('br:espn_5',           'BR', 'ESPN 5 (BR)', r'espn\s*5'),
+    ('br:espn',             'BR', 'ESPN (BR)', r'\bespn\b'),
+    ('br:band_sports',      'BR', 'Band Sports (BR)', r'band\s*sports?'),
+
+    # Mexico -- verified against real MX1 feed. Plain "Fox Sports (Mexico)"/"Fox Sports 2" slots
+    # showed only the bare channel-brand name as every programme's title with no category data, so
+    # classify_sport has nothing to key off and they were left out rather than added for no real
+    # yield. Azteca Deportes/ESPN/Claro Sports/TVC Deportes/Fox Sports Premium all carry real,
+    # specific fixtures.
+    ('mx:azteca_deportes',  'MX', 'Azteca Deportes (MX)', r'azteca\s*deportes'),
+    ('mx:espn_2',           'MX', 'ESPN 2 (MX)', r'espn\s*2'),
+    ('mx:espn_3',           'MX', 'ESPN 3 (MX)', r'espn\s*3'),
+    ('mx:espn_5',           'MX', 'ESPN 5 (MX)', r'espn\s*5'),
+    ('mx:espn',             'MX', 'ESPN (MX)', r'espn\b'),
+    ('mx:claro_sports_1',   'MX', 'Claro Sports 1 (MX)', r'claro\s*sports?\s*1'),
+    ('mx:tvc_deportes',     'MX', 'TVC Deportes (MX)', r'tvc\s*deportes'),
+    ('mx:fox_sports_premium', 'MX', 'Fox Sports Premium (MX)', r'fox\s*sports?\s*premium'),
+    ('mx:nfl_network',      'MX', 'NFL Network (MX)', r'nfl\s*network'),
+    ('mx:golf_channel',     'MX', 'Golf Channel (MX)', r'golf\s*channel'),
+    ('mx:aym_sports',       'MX', 'AYM Sports (MX)', r'aym\s*sports?'),
 ]
 # Which canonical ids a given feed is allowed to resolve to.
 # BEIN1 is MENA-only (confirmed by hand: all 80 of its channels are Arabic/English dubs of the same
@@ -230,7 +506,10 @@ CANONICAL = [
 # Virgin), so IE1 is scoped to both. Confirmed the hard way: scoping it to 'ie:' alone silently
 # dropped 3,597 programmes, Ireland being the single richest feed of the nine.
 FEED_SCOPE = {'AU1': ('au:',), 'UK1': ('uk:',), 'US2': ('us:',), 'CA2': ('ca:',), 'NZ1': ('nz:',),
-              'IN1': ('in:',), 'ZA1': ('za:',), 'IE1': ('ie:', 'uk:'), 'BEIN1': ('mena:',)}
+              'IN1': ('in:',), 'ZA1': ('za:',), 'IE1': ('ie:', 'uk:'), 'BEIN1': ('mena:',),
+              'SG1': ('sg:',), 'MY1': ('my:',), 'IT1': ('it:',), 'FR1': ('fr:',),
+              'DE1': ('de:',), 'NL1': ('nl:',), 'PT1': ('pt:',), 'BE2': ('be:',), 'AT1': ('at:',),
+              'GR1': ('gr:',), 'TR1': ('tr:',), 'CH1': ('ch:',), 'BR2': ('br:',), 'MX1': ('mx:',)}
 CANON_RE = [(cid, cc, name, re.compile(p, re.I)) for cid, cc, name, p in CANONICAL]
 
 # city/region and quality suffixes stripped before matching, so "7mate Perth HD" -> "7mate"
@@ -267,12 +546,42 @@ SPORT_RULES = [
  ('netball',      r'\bnetball\b'),
  ('cricket',      r'\bcricket\b|\bodi\b|\bt20\b|\btest\s*(match|series)\b|\bbig\s*bash\b|\bipl\b|'
                   r'\bthe\s*hundred\b|\bsheffield\s*shield\b|\bw?bbl\b'),
- ('rugby_league', r'\brugby\s*league\b|\bnrlw?\b|\bsuper\s*league\b|\bstate\s*of\s*origin\b|\brlwc\b'),
+ # "Super League" bare is genuinely overloaded -- English Rugby League's own competition, but also
+ # the literal official name of the FA Women's Super League (football) and the Swiss top-flight
+ # football league (sponsor-branded "Brack Super League"/"Credit Suisse Super League"). Confirmed real
+ # false positives against DE1/NL1/AT1/CH1: "Fussball: Women's Super League", "Women's Super League
+ # LIVE: Chelsea FC - Manchester City", "Le temps additionnel - Brack Super League" -- all genuine
+ # soccer matches being filed as rugby league. Excluded here rather than guessed: only the specific
+ # co-occurring words actually observed in those real titles.
+ # The exclusion has to check the WHOLE title, not just text after the match -- "Fussball: Women's
+ # Super League" and "Le temps additionnel - Brack Super League" both put the excluding word BEFORE
+ # "Super League", where a trailing (?!...) lookahead never sees it (confirmed the hard way: an
+ # earlier version of this exclusion, written as a plain trailing lookahead, missed every one of
+ # these real titles because of exactly this). The `^(?=(?:(?!X).)*$).*` prefix is a start-anchored,
+ # end-anchored tempered-greedy-token scan of the entire string for X, independent of where the
+ # eventual "super league" match itself lands.
+ # "RFL Women's Super League" is real too -- the actual rugby league one, RFL (Rugby Football
+ # League) being the governing body -- so the "women" exclusion above can't be unconditional. Checked
+ # first and unconditionally, so it wins before the exclusion gate below even runs.
+ ('rugby_league', r'\brugby\s*league\b|\bnrlw?\b|\brfl\b|'
+                  r"^(?=(?:(?!fu[ß]ball|fussball|women|f[ée]minine|brack|credit\s*suisse|swiss).)*$).*"
+                  r'\bsuper\s*league\b|'
+                  r'\bstate\s*of\s*origin\b|\brlwc\b'),
  ('afl',          r'\baflw?\b|\baustralian\s*rules\b'),
  ('am_football',  r'\bamerican\s*football\b|\bnfl\b|\bncaa\s*football\b|\bcollege\s*football\b|\bsuper\s*bowl\b'),
  ('soccer',       r'\bfootball\b(?!.*\b(american|australian|gaelic)\b)|\bsoccer\b|\bpremier\s*league\b|'
                   r'\bchampions\s*league\b|\beuropa\s*(league|conference)\b|\bla\s*liga\b|\bserie\s*a\b|'
-                  r'\bbundesliga\b|\bligue\s*1\b|\bfa\s*cup\b|\befl\b|\bmls\b|\beredivisie\b|\ba-?league\b|\bwsl\b'),
+                  r'\bbundesliga\b|\bligue\s*1\b|\bfa\s*cup\b|\befl\b|\bmls\b|\beredivisie\b|\ba-?league\b|\bwsl\b|'
+                  # German spelling, not a translation guess -- real DE1/AT1/CH1 titles say
+                  # "Fussball: Servette FC - FC Zürich" with no English word anywhere in the title.
+                  r'\bfu[ß]ball\b|\bfussball\b|'
+                  # Turkish Süper Lig -- real TR1 titles ("Süper Lig Raporu") have no category data
+                  # at all to fall back on, so this has to be a title keyword, not CATEGORY_SPORT.
+                  r'\bs[uü]per\s*lig\b|'
+                  # The positive side of the rugby_league exclusion above -- these need to still
+                  # classify as soccer, not just stop misclassifying as rugby league.
+                  r"\bwomen'?s\s*super\s*league\b|\bbrack\s*super\s*league\b|\bcredit\s*suisse\s*super\s*league\b|"
+                  r'\bswiss\s*super\s*league\b'),
  ('rugby_union',  r'\brugby\s*union\b|\bsix\s*nations\b|\bsuper\s*rugby\b|\btop\s*14\b|\burc\b|'
                   r'\bpremiership\s*rugby\b|\brugby\b'),
  ('golf',         r'\bgolf\b|\bpga\b|\blpga\b|\bdp\s*world\s*tour\b|\bryder\s*cup\b'),
@@ -281,12 +590,52 @@ SPORT_RULES = [
                   r'\bsuperbikes?\b|\bwrc\b|\brally\b|\bgrand\s*prix\b|\bspeedway\b|\bmotocross\b'),
  ('basketball',   r'\bbasketball\b|\bw?nba\b|\beuroleague\b|\bw?nbl\b'),
  ('ice_hockey',   r'\bice\s*hockey\b|\bnhl\b|\bkhl\b|\biihf\b'),
- ('baseball',     r'\bbaseball\b|\bmlb\b|\bworld\s*series\b'),
+ # "World Series" bare is also reused outside baseball (confirmed real false positives: "MMA:
+ # Rajadamnern World Series Muay Thai", "UCI Mountain Bike World Series", "Jet Ski World Series") --
+ # excluded by the same specific-words-actually-observed approach as the rugby_league fix above.
+ # Needs the full-string check (see rugby_league's comment on this exact technique) because the
+ # excluded word lands on both sides across these three real titles: before in "UCI Mountain Bike
+ # World Series" and "Jet Ski World Series", after in "World Series Muay Thai".
+ ('baseball',     r'\bbaseball\b|\bmlb\b|'
+                  r'^(?=(?:(?!muay\s*thai|mountain\s*bike|jet\s*ski).)*$).*\bworld\s*series\b'),
  ('boxing_mma',   r'\bboxing\b|\bufc\b|\bmma\b|\bbare\s*knuckle\b|\bbkfc\b|\bfight\s*night\b|\btitle\s*fight\b'),
  ('cycling',      r'\bcycling\b|\btour\s*de\s*france\b|\bgiro\b|\bvuelta\b|\bcyclocross\b|\buci\b'),
  ('racing',       r'\bhorse\s*racing\b|\bharness\s*racing\b|\bgreyhound\b|\braceday\b'),
 ]
 SPORT_RE = [(n, re.compile(p, re.I)) for n, p in SPORT_RULES]
+# The second half of the two-job rule's own stated design ("title/category/channel decide WHICH
+# SPORT") that the code never actually implemented until now. A non-English broadcaster's own
+# schedule almost never puts an English sport word in the title itself -- "Fiorentina - Juventus" on
+# Italy's DAZN 1 carries <category>Sport</category> and <category>Calcio</category>, genuinely live
+# Serie A, silently dropped at the 'not a sport title' gate because classify_sport() only ever looked
+# at the title. Verified by hand 2026-11-12 against the real IT1 feed's own category vocabulary
+# (counted directly: 462 "Calcio", 157 "Tennis", 108 "Basket", 51 "Golf", 33 "Rugby", 29 "Ciclismo",
+# 27 "Snooker", 396 "Motori" -- not guessed translations). Kept small and high-precision: a category
+# label is a clean, single-purpose genre tag from the broadcaster's own schedule, not free text, so
+# it doesn't need SPORT_RULES' word-boundary/collision care to be trustworthy.
+CATEGORY_SPORT = {
+    'calcio': 'soccer', 'motori': 'motorsport', 'tennis': 'tennis', 'basket': 'basketball',
+    'golf': 'golf', 'rugby': 'rugby_union', 'ciclismo': 'cycling', 'snooker': 'snooker',
+    # French -- verified by hand 2026-11-12 against the real FR1 feed's own category vocabulary
+    # (counted directly: 216 "Football", 61 "Golf", 60 "Basket-ball", 30 "Boxe", 21 "Tennis",
+    # 17 "Football américain", 12 "Rugby", 11 "Cyclisme"). 'football' here means soccer specifically
+    # ('football américain' is checked first so it isn't swallowed by the bare 'football' entry).
+    'football américain': 'am_football', 'football': 'soccer', 'basket-ball': 'basketball',
+    'boxe': 'boxing_mma', 'cyclisme': 'cycling', 'motocyclisme': 'motorsport',
+    # German -- verified against real DE1 feed categories (same words appear on AT1/CH1 titles/cats
+    # too). "Formel 1"/"Großer Preis" titles don't contain the English "formula"/"grand prix" the
+    # title rule looks for, so without this they were falling through to 'not a sport title'.
+    'fußball': 'soccer', 'motorsport': 'motorsport', 'formel 1': 'motorsport', 'eishockey': 'ice_hockey',
+    'basketball': 'basketball', 'boxen': 'boxing_mma',
+    # Dutch/Portuguese -- cheap safety nets alongside titles that are mostly already in international
+    # form (NL1/PT1 commonly keep league names in English, e.g. "Bundesliga 26/27 - Paderborn x E.
+    # Frankfurt"), for the minority that don't.
+    'voetbal': 'soccer', 'futebol': 'soccer',
+    # Greek -- verified against real GR1 feed categories (counted: 620 "Ποδόσφαιρο"). Greek titles
+    # are in Greek script throughout, so the English title rule never fires at all for this feed;
+    # these three are the only categories confirmed unambiguous enough to trust without guessing.
+    'ποδόσφαιρο': 'soccer', 'μπάσκετ': 'basketball', 'μηχανοκίνητα': 'motorsport',
+}
 SPORT_LABEL = {'cricket': 'Cricket', 'rugby_league': 'Rugby League', 'afl': 'AFL',
                'am_football': 'American Football', 'soccer': 'Soccer', 'rugby_union': 'Rugby Union',
                'golf': 'Golf', 'tennis': 'Tennis', 'motorsport': 'Motorsport',
@@ -304,7 +653,20 @@ SPORTS_CAT = re.compile(r'sport', re.I)
 DEDICATED = re.compile(r'^(au:(fox|kayo|stan|optus|espn|bein|sky_racing|racing)|uk:(sky|tnt|premier|eurosport|racing|dazn|laliga)|'
                        r'us:(espn|fs\d|cbs_sports|golf|tennis|mlb|nfl|nba|nhl|willow|bein|racer|sec|acc|big_ten)|'
                        r'ca:(tsn|sportsnet|rds|tva|rev)|nz:sky|in:(star|sony|dd)|za:supersport|'
-                       r'ie:premier|mena:)')
+                       r'ie:premier|mena:|sg:(hub_sports|mio|bein|premier_sports|spotv|mola|cricket_plus|fight_sports)|'
+                       r'my:(astro|golf_channel|premier_sports_rugby|w_sport|bein)|it:(dazn|sky_|sportitalia)|'
+                       r'fr:(bein|canal_|rmc_sport|eurosport)|'
+                       r'de:(dazn|sky_|sportdigital|sport1|eurosport)|'
+                       r'nl:(ziggo_sport|espn|eurosport|viaplay)|'
+                       r'pt:(dazn|sport_tv|sporting_tv|eurosport|w_sport)|'
+                       r'be:(dazn|voosport|rmc_sport|sport10|eurosport)|'
+                       r'at:(sky_|orf_sport|eurosport)|'
+                       r'gr:(novasports|cosmote_sport|eurosport)|'
+                       r'tr:(beinsports|fox_sports|trt_spor|ssport|a_spor|eurosport)|'
+                       r'ch:(blue_sport|mysports)|'
+                       r'br:(premiere_clubes|sportv|espn|band_sports)|'
+                       r'mx:(azteca_deportes|espn|claro_sports|tvc_deportes|fox_sports_premium|nfl_network|'
+                       r'golf_channel|aym_sports))')
 
 # Studio/filler programming that is not a watchable event. Checked against the TITLE only -- the
 # two-job rule (title/category decides sport, sub-title/desc decides matchup identity) holds here too,
@@ -312,11 +674,28 @@ DEDICATED = re.compile(r'^(au:(fox|kayo|stan|optus|espn|bein|sky_racing|racing)|
 # ("a five-goal thriller"), and title-only is what keeps this from rejecting real fixtures.
 # Duration is a SIGNAL here, never a cutoff on its own -- a hard "< 40 minutes" rule would also
 # discard genuine short sessions (qualifying, a darts session, a criterium).
-SHOW_RE = re.compile(r'\bhighlights?\b|\bclassic\b|\brewind\b|\breview\b|\bmagazine\b|\bpreviews?\b|'
+SHOW_RE = re.compile(r'\bhighlights?\b|\bclassic\b|\brewind\b|\breview\b|\bmagazine?\b|\bpreviews?\b|'
                      r'press\s*conference|\bnews\b|documentary|\bbest\s*of\b|\btop\s*\d+\b|countdown|'
                      r'\banalysis\b|\bweekly\b|round\s*-?up|\bthis\s*week\b|\bbuild-?up\b|\bverdict\b|'
                      r'\bdaily\b|\bshow\b|\bextra\s*time\b|\bovertime\b|\btonight\b|\bwrap\b|\bmini\b|'
-                     r'\bupcoming\b|\bcoming\s*up\b|\bgoals\b|\btalk\b|\bdebate\b', re.I)
+                     r'\bupcoming\b|\bcoming\s*up\b|\bgoals\b|\btalk\b|\bdebate\b|'
+                     # Italian studio/filler strands -- verified live 2026-11-12 against the real IT1
+                     # feed, both leaking through as apparent live matches: "Sportitalia Mercato" and
+                     # "Calciomercato Live Weekend" (calciomercato = the transfer-window show, a studio
+                     # strand, not a match) and "Champions League Remix Ep.4" (a highlights-remix
+                     # magazine show that was being enriched with comp='Champions League' as if it were
+                     # a real fixture). Same "verify against real data, don't guess the translation"
+                     # bar as CATEGORY_SPORT above.
+                     r'\bremix\b', re.I)
+
+# French broadcasters' documentary marker -- sometimes a "Doc." sub-title prefix, sometimes (same
+# programme, a different feed occurrence with no sub-title at all) a "Documentaire"/"Documentaire
+# sportif" category instead. Verified against FR1's own 42 Doc.-subtitled titles, and against the two
+# sport-themed ones that only revealed the category form ("Violences dans le football" / "Les
+# acrobates du football" both appeared twice with sub="Doc. Sport" and twice more with sub=None,
+# cats=['Documentaire']) -- checking sub-title alone silently let half their occurrences through.
+DOC_SUB_RE = re.compile(r'^\s*doc\.?\s', re.I)
+DOC_CAT_RE = re.compile(r'documentaire', re.I)
 
 # Archive/nostalgia strands are a DIFFERENT check from the above, and deliberately read title+sub+desc
 # together rather than title alone. Confirmed live and real: broadcasters routinely put the archive
@@ -339,7 +718,13 @@ ARCHIVE_RE = re.compile(r'\bflashback\b|\blook\s*back\b|\bvault\b|\bretro\b|\bgr
                        # every one of them until this was added.
                        r'\bfrom\s+(the\s+)?(19|20)\d{2}\b|\b(19|20)\d{2}\s*/\s*(19|20)?\d{2}\b|'
                        r'\b(19|20)\d{2}\s+(final|classic|season)\b|\blatest\s+round\s+of\s+fixtures\b|'
-                       r'\b\d{2}/\d{2}\s*:', re.I)
+                       r'\b\d{2}/\d{2}\s*:|'
+                       # A year sitting inside parentheses is the same "year signals archive" logic as
+                       # the "from 19xx" check above, just a different shape broadcasters use --
+                       # verified against the real IT1 feed before adding: matched exactly 4 titles,
+                       # zero false positives ("Italia Mundial (Spagna 1982)", two unrelated films and
+                       # an opera recording with their release year in parens, nothing live or current).
+                       r'\((?:[^()]{0,30})?(19|20)\d{2}\)', re.I)
 LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 
 # Named studio strands that a "LIVE" prefix must NOT rescue. The live_hint exemption above exists so a
@@ -352,7 +737,33 @@ LIVE_HINT = re.compile(r'^\s*(live|lve)\b|\blive\b', re.I)
 STUDIO_HARD = re.compile(r'golf\s*central|learning\s*cent(er|re)|\bepisode\b|\bthe\s*cut\b|'
                          r'how\s*good\s*is|\btailgate\b|\bface\s*-?off\b|\bfilms\s*presents\b|'
                          r'\b(post|pre)\s*-?\s*(game|match|show)\b|\bthe\s*point\b|\bheaven\b|'
-                         r'\b(now|tonight|central|today)\s*$|\bretention\b|\bauction\b', re.I)
+                         r'\b(now|tonight|central|today)\s*$|\bretention\b|\bauction\b|'
+                         # Italian pre-/post-match studio segments -- verified against the real IT1
+                         # feed ("Prepartita Nations League 13/11/2026", "Postpartita Nations League
+                         # 14/11/2026", bare "Prepartita"/"Postpartita"), the exact same pre/post-game
+                         # studio pattern the English rule above already exists for.
+                         r'\bprepartita\b|\bpostpartita\b|'
+                         # "Calciomercato Live Weekend" (the Italian transfer-window chat show) survived
+                         # SHOW_RE's own 'mercato' catch because it also says "Live" in English, which
+                         # exempts a SHOW_RE match the same way "Live: Golf Central" needed STUDIO_HARD
+                         # above instead -- the literal reason this check exists at all. Belongs here,
+                         # not SHOW_RE, so the live_hint rescue can never apply to it.
+                         r'mercato|'
+                         # Canal+'s daily French football news/transfers talk show -- verified against
+                         # real FR1 desc text ("Suivez toute l'actualite foot du jour... Autour de la
+                         # table, les journalistes et consultants..."), a studio panel show, not a match.
+                         r'late\s*football\s*club|'
+                         # Dutch Ziggo Sport strands -- verified against real NL1 desc text: "Rondo"
+                         # desc literally says "Voetbaltalkshow" (football talkshow); "Kick 't Met On
+                         # Tour" desc says "In a new episode of Kick 't Met On Tour: the Champions
+                         # League match Feyenoord - Internazionale" -- a review show ABOUT a match,
+                         # not the match; "Football Nation" is a documentary-style analysis episode.
+                         r"\brondo\b|\bkick\s*'?t\s*met\s*on\s*tour\b|\bfootball\s*nation\b|"
+                         # NFL Network's daily morning studio show, seen on MX1 with no sub/desc at
+                         # all -- the bare word "football" in its name would otherwise let it through
+                         # the soccer rule unfiltered. Left "Thursday Night Football" alone deliberately
+                         # -- that one is a real weekly live NFL game, not a studio strand.
+                         r'good\s*morning\s*football', re.I)
 
 # identity: "A v B" / "A vs B", optionally prefixed by a round ("Semi Final: Australia v Samoa")
 IDENTITY_RE = re.compile(r'^(?:(?P<round>[^:]{3,40}):\s*)?(?P<a>[^:]{2,48}?)\s+(?:v|vs\.?|versus)\s+(?P<b>[^:(]{2,48})\s*$', re.I)
@@ -395,10 +806,16 @@ DESC_PROSE = [
 JUNK_SIDE = re.compile(r'^(tba|tbc|tbd|the|a|\d+)$', re.I)
 
 
-def classify_sport(title):
+def classify_sport(title, cats=None):
     for n, rx in SPORT_RE:
         if rx.search(title):
             return n
+    # Fallback only -- the title is still checked first and still wins if it names a sport itself.
+    # cats is optional (every existing caller, including the self-test, keeps working unchanged).
+    for c in (cats or ()):
+        s = CATEGORY_SPORT.get((c or '').strip().lower())
+        if s:
+            return s
     return None
 
 
@@ -512,7 +929,7 @@ def build_events(raw):
         if not title:
             rej['no title'] += 1
             continue
-        sport = classify_sport(title)
+        sport = classify_sport(title, p['cats'])
         if not sport:
             rej['not a sport title'] += 1
             continue
@@ -524,7 +941,13 @@ def build_events(raw):
             rej['marked previously-shown'] += 1
             continue
         mins = (p['stop'] - p['start']).total_seconds() / 60
-        looks_show = bool(SHOW_RE.search(title))
+        # French broadcasters mark real documentaries with a "Doc." sub-title prefix -- verified against
+        # the real FR1 feed: 42 distinct Doc.-subtitled titles, all genuine documentaries (biographical,
+        # nature, etc.), zero real matches among them. Two sport-themed ones ("Violences dans le football",
+        # "Les acrobates du football") were slipping through because neither the title nor SHOW_RE's
+        # English-only vocabulary caught them. Sub-title only, not desc -- same narrow, verified-first bar.
+        looks_show = (bool(SHOW_RE.search(title)) or bool(DOC_SUB_RE.match(p['sub']))
+                      or any(DOC_CAT_RE.search(c) for c in p['cats']))
         live_hint = bool(LIVE_HINT.search(title)) or bool(LIVE_HINT.search(p['sub']))
         # duration as a combined signal, never alone: a short programme that also looks like a studio
         # show is filler; a short programme that says LIVE is a real session.
@@ -791,6 +1214,106 @@ TSDB_SPORT_TO_ID = {
 # name at a time, not the broadcast's own title), so the guard lives where the title is actually
 # checked, in enrich() below.
 WOMENS_MARKER = re.compile(r"\bwomen'?s\b|\bladies\b|\bwnrl\b|\bwbbl\b|\baflw\b|\bwsl\b", re.I)
+
+
+# How far a channel's own programme start can sit from a KNOWN real fixture's kickoff and still
+# plausibly BE that fixture's broadcast. Tight on purpose: unlike the independent EPG-first pipeline,
+# this is not trying to decide what the programme IS, only whether its timing can only be this one
+# already-real, already-identified match.
+FIXTURE_FILL_WINDOW_HOURS = 1.5
+
+
+def comp_to_sports():
+    """Competition display name (as guide-v2.json's own `comp` field spells it) -> the epg_first sport
+    id(s) it belongs to, straight from the same LEAGUES list comp_name_index() already uses."""
+    try:
+        from resolve_v2 import LEAGUES
+    except Exception:
+        return {}
+    out = {}
+    for l in LEAGUES:
+        sports = TSDB_SPORT_TO_ID.get(l.get('tsdb_sport'), set())
+        if sports:
+            out[l['comp']] = sports
+    return out
+
+
+def fill_fixture_channels(raw_all, channels, guide_v2_path, out_path):
+    """The actual fix for guide-v2.json's real gap: 231 of 539 fixtures (42%, measured live on
+    2026-11-11) are real matches -- real teams, real competition, real kickoff, from
+    TheSportsDB/football-data -- with zero channels. Never invent a new event here. The fixture
+    already IS the event; the EPG's only job is answering "is a channel broadcasting something of the
+    right sport at this exact, already-known kickoff". That sidesteps the entire class of bug the
+    independent EPG-first pipeline (build_events/enrich below) has to defend against -- archive clips,
+    stale ground truth, gender mislabelling -- none of those are possible when a real fixture, not a
+    parsed EPG title, is the source of truth for who's playing and when. Writes channels back into
+    guide-v2.json's own existing schema, so v2Events() on the client needs no changes at all to use
+    them -- this is additive to the fixture-matching path that already works, not a parallel one."""
+    try:
+        with open(guide_v2_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        print('fill_fixture_channels: could not read %s (%s)' % (guide_v2_path, e), file=sys.stderr)
+        return 0, 0
+
+    c2s = comp_to_sports()
+    need = collections.defaultdict(list)       # sport -> [(kick_dt, fixture_dict), ...]
+    candidates = 0
+    for ev in data.get('events', []):
+        if ev.get('channels'):
+            continue
+        sports = c2s.get(ev.get('comp'))
+        if not sports:
+            continue
+        try:
+            kick = datetime.datetime.fromisoformat(ev['kick'])
+        except Exception:
+            continue
+        candidates += 1
+        for sp in sports:
+            need[sp].append((kick, ev))
+
+    if not need:
+        return 0, candidates
+
+    window = datetime.timedelta(hours=FIXTURE_FILL_WINDOW_HOURS)
+    checked_iso = iso(datetime.datetime.now(datetime.timezone.utc))
+    found = set()   # id(ev), so one fixture is only counted once even if several channels match it
+    for p in raw_all:
+        title = p['title']
+        if not title:
+            continue
+        sport = classify_sport(title, p['cats'])
+        bucket = need.get(sport)
+        if not bucket:
+            continue
+        # same evidence bar as the main pipeline's filters, for the same reasons -- a studio/archive
+        # programme is not proof of a real broadcast slot, and a general channel needs the category
+        # flag the same way build_events() requires it.
+        if STUDIO_HARD.search(title) or ARCHIVE_RE.search(title) or ARCHIVE_RE.search(p['sub'] or '') or ARCHIVE_RE.search(p['desc'] or ''):
+            continue
+        is_sport_cat = any(SPORTS_CAT.search(c) for c in p['cats'])
+        if not (DEDICATED.match(p['bid']) or is_sport_cat):
+            continue
+        for kick, ev in bucket:
+            if abs((p['start'] - kick).total_seconds()) > window.total_seconds():
+                continue
+            ch = channels.get(p['bid'])
+            if not ch:
+                continue
+            row = {'channel': ch['name'], 'country': ch['country'], 'kind': 'LIVE', 'inferred_kind': True,
+                   'start': iso(kick), 'confidence': 'likely', 'source': 'epg_timeslot', 'checked': checked_iso}
+            existing = ev.setdefault('channels', [])
+            if not any(c.get('channel') == row['channel'] for c in existing):
+                existing.append(row)
+                found.add(id(ev))
+
+    if found:
+        with open(guide_v2_path, encoding='utf-8') as f:
+            pass  # already-loaded `data` holds the mutated fixtures directly (ev dicts are shared refs)
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, separators=(',', ':'))
+    return len(found), candidates
 
 
 def match_title_comp(title, sport):
